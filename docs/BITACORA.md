@@ -10,12 +10,12 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ## Dónde retomamos — actualizado 2026-08-25
 
-**Próximo paso concreto:** escribir la instancia del cliente con `@prisma/adapter-pg` contra `POSTGRES_PRISMA_URL`, **resolviendo bien el TLS** (ver «cosas que ya nos mordieron»). Después el seed de las 8 canónicas y los 258 sinónimos.
+**Próximo paso concreto:** agregar `prisma migrate deploy` al script de `build` (hoy nadie migra en el deploy), levantar `next dev` una vez para ejercitar el bug de Turbopack en aislamiento, y después el seed: 8 categorías canónicas y 258 sinónimos deduplicados por `textoNormalizado` desde `WinCompras/backend/db.sqlite3`.
 
 | | |
 |---|---|
 | **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | **Primera migración aplicada y verificada contra la base.** 14 tablas creadas, base vacía. |
+| **Situación** | Base migrada, con RLS, y el cliente conectando por TLS verificado. **Base vacía: falta el seed.** |
 | **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
 | **Repo** | `github.com/harambeiskappa/Compras` → proyecto `inaki-pegsa/compras` en Vercel |
 | **Base** | Supabase `compras-db`, São Paulo, plan free. Migración `20260825191736_modulos_1_y_2` aplicada. |
@@ -30,10 +30,12 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 - `vercel link` y `vercel env pull` hechos: las variables están en `.env.local`.
 - `CLAUDE.md` con las decisiones fijas y las reglas duras del dominio.
 - **Primera migración aplicada.** Verificada consultando la base: el `CHECK (cabezas > 0)` está, las FK compuestas están, y ninguna de las seis columnas de cantidad/peso/precio/monto tiene default.
+- **RLS activado en las 14 tablas**, sin políticas, con `relforcerowsecurity = false` para preservar el bypass del dueño. Verificado que Prisma sigue leyendo después.
+- **Cliente conectando**, con el CA de Supabase inline y verificado por fingerprint contra el root que presenta el servidor.
 
 ### Falta, en orden
 
-1. El cliente con el adapter (el próximo paso de arriba).
+1. `prisma migrate deploy` en el build, y el smoke de `next dev` (el próximo paso de arriba).
 2. El seed: 8 categorías canónicas y 258 sinónimos deduplicados por `textoNormalizado`. Requiere instalar `tsx` y escribir `prisma/seed.ts`, que hoy está declarado en el config pero no existe.
 3. Instanciar el cliente con el adapter contra `POSTGRES_PRISMA_URL` (la pooleada).
 4. La prueba contra el histórico: representar las 118 compras del último año en el modelo nuevo y listar las que no entren, con el motivo. Es la verificación exigida del punto 8.1 del prompt de arranque.
@@ -296,3 +298,46 @@ O sea que son dos conceptos distintos y ambos campos se quedan, con nombres que 
 **Un problema que espera en el adapter.** El `pg` que trae `@prisma/adapter-pg` trata `sslmode=require` como `verify-full`, y la cadena de certificados de Supabase no valida contra el store por defecto: `self-signed certificate in certificate chain`. Prisma no lo sufre al migrar porque usa su propio engine, no `pg`. Se esquivó con `rejectUnauthorized: false` **solo dentro de un script de verificación efímero**, nunca como configuración. Al escribir el cliente hay que resolverlo de verdad, con el CA de Supabase.
 
 **Qué queda.** El cliente con el adapter, después el seed.
+
+---
+
+### 2026-08-25 · Cliente con adapter: el TLS y dónde vive el certificado
+
+**Qué hay.** `src/lib/prisma.ts` con singleton en `globalThis` (evita agotar conexiones con el hot reload), `PrismaPg` contra `POSTGRES_PRISMA_URL` y `max: 1` en el pool — el pooling ya lo hace pgbouncer. Se le saca `sslmode` a la cadena antes de pasarla, porque pisa el objeto `ssl` y además desacopla de cómo `pg` reinterprete ese parámetro más adelante.
+
+**La cadena TLS del pooler, interrogada a mano** (hay que hacer el `SSLRequest` de Postgres, no es TLS directo):
+
+```
+leaf  : CN=*.pooler.supabase.com   O=Supabase Inc
+inter : CN=Supabase Intermediate 2021 CA
+root  : CN=Supabase Root 2021 CA   ← self-signed, es el que hace falta
+        válido 2021-04-28 → 2031-04-26
+```
+
+No hay URL pública para bajarlo: solo desde el dashboard (Settings → Database → SSL Configuration). Extraerlo del propio chain se descartó por circular — sería verificar una conexión con un certificado sacado de esa misma conexión.
+
+**Decisión: el CA va inline como string en un módulo `.ts`, no como `.crt` leído con `fs`.** El motivo es el modo de falla, no la elegancia. Next no traza archivos arbitrarios al bundle de Vercel, así que `fs.readFileSync` anda en local y puede romper **solo en producción**; mantenerlo vivo exige `outputFileTracingIncludes`, una config más que se desincroniza en silencio. Un módulo TypeScript viaja con el bundle siempre — en local, en Vercel y en el script del seed. El certificado es público, así que no hay nada que proteger, y vence en 2031.
+
+**Regla que no se negocia:** `rejectUnauthorized: false` no llega a producción. Por esa conexión viajan precios de compra.
+
+**Un aviso que probablemente no aplique.** Se había anticipado `prepared statement s0 already exists` por pgbouncer en transaction mode. En `@prisma/adapter-pg@7.10.0`, `statementNameGenerator` es opcional y sin ella el adapter no cachea prepared statements, así que la config por defecto esquiva el problema. Queda anotado para reconocerlo si algún día aparece.
+
+**Qué queda.** Pegar el CA, correr la consulta de prueba, y después el seed.
+
+---
+
+### 2026-08-25 · TLS verificado, RLS cerrado, cliente andando
+
+**El certificado, verificado en vez de confiado.** Antes de inlinearlo se comparó el fingerprint SHA-256 del archivo bajado del dashboard contra el root que presenta el servidor en el handshake: coinciden, y la verificación TLS da `authorized: true`. Eso rompe la circularidad de haberlo sacado de la propia conexión. Vive en `src/lib/supabase-ca.ts` con procedencia, CN, vencimiento (2031-04-26), fingerprint y **el método para reemplazarlo**, no solo la instrucción. El `.crt` no se copió al repo: un concepto, un lugar.
+
+**La prueba del cliente.** Siete consultas, todas pasando. La misma repetida tres veces a propósito: no apareció `prepared statement s0 already exists`, lo que confirma empíricamente que `@prisma/adapter-pg@7.10.0` no cachea prepared statements sin `statementNameGenerator`. La consulta cruda confirmó que conecta como `postgres`, que era lo que hacía falta para que el bypass de RLS funcione.
+
+**RLS en las 14 tablas, sin políticas.** El dashboard reportaba 14 issues CRITICAL de «RLS Disabled in Public»: Supabase expone por API REST todo lo que está en el esquema `public`, y la llave que la abre —la `anon key`— es pública por diseño. Sin RLS, cualquiera con esa llave y la URL del proyecto podía leer y escribir todo, precios de compra incluidos. Activar RLS sin políticas deniega todo por esa vía y no toca a Prisma, que se conecta con el rol dueño. Verificado: `relrowsecurity = true` en las 14, cero políticas, `relforcerowsecurity = false` (eso es lo que preserva el bypass del dueño), y el smoke test repetido después de aplicarlo.
+
+**Una trampa de Prisma que vale recordar.** `_prisma_migrations` no se puede tocar con un `ALTER` pelado dentro de una migración: Prisma valida cada migración replayándola contra una *shadow database* donde esa tabla no existe como tabla de usuario, y falla con `P3006 / 42P01`. Se resolvió guardando ese único `ALTER` detrás de un `IF EXISTS` — el shadow lo saltea, la base real lo aplica. El porqué quedó escrito en el SQL para que nadie lo «limpie» después. La base real nunca se tocó: la validación falla antes.
+
+**Dos cosas del deploy que todavía no están cerradas.**
+- **Nadie migra en el deploy.** `postinstall` corre `prisma generate` pero no `migrate`. Si se pushea un cambio de esquema, Vercel construye un cliente para tablas que no existen y la app rompe en producción con un error opaco. Se cierra agregando `prisma migrate deploy` al script de `build`; necesita `POSTGRES_URL_NON_POOLING`, que ya está inyectada.
+- **Los tres entornos comparten base.** Production, Preview y Development apuntan a la misma, así que cualquier build va a migrar la única que hay. `migrate deploy` es idempotente, así que hoy no rompe — pero es la primera vez que esa decisión roza. **A revisar cuando haya datos reales.**
+
+**Nota sobre `tsx`.** El smoke test corrió sin instalarlo, aprovechando el type stripping nativo de Node 25. Para el seed conviene instalarlo igual: `prisma.config.ts` lo declara, y no todas las máquinas ni el runtime de Vercel corren Node 25.
