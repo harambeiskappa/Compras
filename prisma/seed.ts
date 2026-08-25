@@ -133,8 +133,23 @@ async function sembrar(prisma: Cliente) {
     }
   }
 
+  // Estado actual en la base, en UNA consulta en vez de 217. Hace falta para
+  // decidir si el seed puede escribir la canónica de cada fila (ver abajo).
+  const yaEnBase = new Map(
+    (
+      await prisma.categoriaSinonimo.findMany({
+        select: { textoNormalizado: true, categoriaCanonicaId: true },
+      })
+    ).map((s) => [s.textoNormalizado, s.categoriaCanonicaId])
+  );
+
+  const idACodigo = new Map(canonicas.map((c) => [c.id, c.codigo]));
+
   const pendientes: string[] = [];
+  const divergencias: string[] = [];
   let mapeados = 0;
+  let rellenadas = 0;
+  let preservadas = 0;
 
   for (const [norm, grupo] of grupos) {
     const categoriaCanonicaId = grupo.canonico
@@ -151,16 +166,35 @@ async function sembrar(prisma: Cliente) {
     if (categoriaCanonicaId === null) pendientes.push(norm);
     else mapeados++;
 
+    // REGLA DE ESCRITURA: el seed rellena una canónica vacía, pero NUNCA
+    // cambia una que ya tiene valor.
+    //
+    // El sistema nuevo es la fuente de verdad de acá en adelante, no
+    // WinCompras. Si una persona corrigió a mano el mapeo de un sinónimo — sea
+    // uno de los 18 pendientes o uno de los 199 que vinieron mapeados — volver
+    // a correr el seed no se lo puede revertir con el dato viejo.
+    const existe = yaEnBase.has(norm);
+    const canonicaActual = yaEnBase.get(norm) ?? null;
+    const puedeEscribir = canonicaActual === null && categoriaCanonicaId !== null;
+
+    if (existe && canonicaActual !== null) {
+      preservadas++;
+      if (categoriaCanonicaId !== null && categoriaCanonicaId !== canonicaActual) {
+        divergencias.push(
+          `${norm}: la base dice ${idACodigo.get(canonicaActual)}, ` +
+            `WinCompras dice ${grupo.canonico} — gana la base`
+        );
+      }
+    } else if (puedeEscribir) {
+      rellenadas++;
+    }
+
     await prisma.categoriaSinonimo.upsert({
       where: { textoNormalizado: norm },
       create: { texto: grupo.texto, textoNormalizado: norm, categoriaCanonicaId },
-      // Si la fuente no trae canónica, NO se toca `categoriaCanonicaId` en el
-      // update: un pendiente puede haber sido resuelto a mano por una persona y
-      // pisarlo con NULL borraría ese trabajo en cada corrida.
-      update:
-        categoriaCanonicaId === null
-          ? { texto: grupo.texto }
-          : { texto: grupo.texto, categoriaCanonicaId },
+      update: puedeEscribir
+        ? { texto: grupo.texto, categoriaCanonicaId }
+        : { texto: grupo.texto },
     });
   }
 
@@ -174,6 +208,17 @@ async function sembrar(prisma: Cliente) {
   console.log(`  colapsados        : ${crudas.length - grupos.size}`);
   console.log(`  mapeados          : ${mapeados}`);
   console.log(`  pendientes de mapeo: ${pendientes.length}`);
+
+  console.log("\n=== escrituras de canónica ===");
+  console.log(`  rellenadas (estaban vacías): ${rellenadas}`);
+  console.log(`  preservadas (ya tenían valor, no se tocaron): ${preservadas}`);
+  if (divergencias.length) {
+    console.log(
+      `\n  OJO: ${divergencias.length} donde la base y WinCompras no coinciden.`
+    );
+    console.log("  Gana la base: el sistema nuevo es la fuente de verdad.");
+    for (const d of divergencias) console.log(`    ${d}`);
+  }
 
   console.log("\n=== pendientes de mapeo (categoriaCanonicaId NULL) ===");
   console.log("  No se adivinan: son ambigüedades reales, las resuelve una persona.");
