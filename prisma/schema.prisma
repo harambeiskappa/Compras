@@ -9,8 +9,15 @@ generator client {
 }
 
 // La URL de conexión NO va acá: en Prisma 7 `datasource.url` dejó de admitirse
-// en el schema y vive en `prisma.config.ts` (env DATABASE_URL, inyectada por
-// Vercel). El cliente se instancia con `new PrismaClient({ adapter })`.
+// en el schema. Son DOS conexiones distintas, las dos inyectadas por la
+// integración de Supabase (no existe DATABASE_URL en este proyecto):
+//
+//   - CLI / migraciones -> POSTGRES_URL_NON_POOLING (directa), en
+//     `prisma.config.ts`. pgbouncer rompe los locks y prepared statements
+//     de migrate.
+//   - App en runtime -> la pooleada (POSTGRES_PRISMA_URL / POSTGRES_URL), vía
+//     `new PrismaClient({ adapter })`. Sin pool, en serverless se agotan las
+//     conexiones.
 datasource db {
   provider = "postgresql"
 }
@@ -25,9 +32,11 @@ model Empresa {
   esPropio Boolean?
   activo   Boolean  @default(true)
 
-  prefijos PrefijoTropa[]
-  compras  Compra[]
-  tropas   Tropa[]
+  prefijos           PrefijoTropa[]
+  // «donde esta empresa figura como titular», no «las compras de esta empresa»:
+  // las cabezas pueden quedar en otra. Ver la nota sobre titular vs. compradora.
+  comprasComoTitular Compra[]
+  tropas             Tropa[]
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -138,37 +147,16 @@ model CategoriaSinonimo {
 
 // ---------- Dominio de la compra (módulos 1 y 2) ----------
 
-// ============================================================================
-// DECIDIR #13 — DUPLICACIÓN DE `empresaCompradora`: SIN RESOLVER
+// `Compra.empresaTitularId` y `Tropa.empresaCompradoraId` NO son el mismo dato:
+// la titular es bajo qué empresa se registra la compra, la de la tropa es a
+// quién le quedan las cabezas. Lo normal es una sola empresa por compra; la
+// excepción es una empresa que compró poco y se cuelga de la compra de otra.
 //
-// Hoy este dato existe en DOS lugares: `Compra.empresaCompradoraId` y
-// `Tropa.empresaCompradoraId`. Eso viola la regla «un concepto, un lugar» —
-// exactamente el error que más caro salió en WinCompras. Nada en el esquema
-// impide que la Compra diga PEG mientras sus tropas dicen LTA, y en una compra
-// con dos tropas de empresas distintas `Compra.empresaCompradoraId` es
-// directamente ambiguo: no hay valor correcto para esa columna.
-//
-// El estado actual del archivo NO es la decisión: es la duplicación en crudo,
-// dejada a la vista para resolverla antes de la primera migración.
-// NO MIGRAR ASÍ.
-//
-// Opción A — el dato vive solo en `Tropa`.
-//   Se borra `Compra.empresaCompradoraId` y su relación. El módulo 1 crea la
-//   primera `Tropa` con `nroTropa` NULL, porque el número lo genera WinCampo
-//   más tarde (cobertura histórica de nro_tropa: 5,1%).
-//   A favor: una sola fuente de verdad, imposible que diverja.
-//   Costo: no existe «la compra» sin al menos una tropa, y el módulo 1 pasa a
-//   escribir en dos tablas en vez de una.
-//
-// Opción B — son dos conceptos distintos, con nombres distintos.
-//   `Compra.empresaCompradoraId` se renombra a lo que realmente es (la empresa
-//   a cuyo nombre se cerró la operación en la feria) y `Tropa.empresaCompradoraId`
-//   queda como la empresa que recibe esas cabezas.
-//   A favor: refleja el caso de reparto sin forzar nada.
-//   Costo: exige una validación de consistencia explícita entre la empresa de
-//   la compra y las de sus tropas, que el esquema no puede expresar por sí solo
-//   — vive en la capa de aplicación, y hay que escribirla.
-// ============================================================================
+// Validación de aplicación, no constraint de base: al cerrar el módulo 2, la
+// empresa titular tiene que aparecer entre las empresas de las tropas de esa
+// compra. No puede ser un constraint porque en el módulo 1 todavía no hay
+// ninguna tropa contra la cual chequear. En el formulario, la empresa de cada
+// tropa viene precargada con la titular.
 
 model Compra {
   id    Int      @id @default(autoincrement())
@@ -177,9 +165,10 @@ model Compra {
   consignatarioId Int
   consignatario   Consignatario @relation(fields: [consignatarioId], references: [id])
 
-  // Ver DECIDIR #13 arriba. Duplicado con Tropa.empresaCompradoraId, sin resolver.
-  empresaCompradoraId Int
-  empresaCompradora   Empresa @relation(fields: [empresaCompradoraId], references: [id])
+  // Bajo qué empresa se registra la compra; dato del módulo 1, antes de que
+  // exista ninguna tropa.
+  empresaTitularId Int
+  empresaTitular   Empresa @relation(fields: [empresaTitularId], references: [id])
 
   vendedorId Int?
   vendedor   Vendedor? @relation(fields: [vendedorId], references: [id])
@@ -218,7 +207,8 @@ model Tropa {
   compraId Int
   compra   Compra @relation(fields: [compraId], references: [id])
 
-  // Ver DECIDIR #13 arriba. Duplicado con Compra.empresaCompradoraId, sin resolver.
+  // A quién le quedan efectivamente estas cabezas; casi siempre es la titular
+  // de la compra, la excepción es una empresa que compró poco y se cuelga.
   empresaCompradoraId Int
   empresaCompradora   Empresa @relation(fields: [empresaCompradoraId], references: [id])
 
@@ -231,6 +221,9 @@ model Tropa {
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
+  // Sostiene la FK compuesta de Lote y Carga: sin este unique, Postgres no
+  // acepta (id, compraId) como destino de una foreign key.
+  @@unique([id, compraId])
   @@map("tropa")
 }
 
@@ -243,8 +236,11 @@ model Carga {
   compraId Int
   compra   Compra @relation(fields: [compraId], references: [id])
 
+  // FK compuesta contra (id, compraId) de Tropa: garantiza que la tropa sea de
+  // ESTA compra y no de otra. Con tropaId NULL, Postgres no evalúa la
+  // restricción (MATCH SIMPLE), así que «todavía no sé la tropa» sigue andando.
   tropaId Int?
-  tropa   Tropa? @relation(fields: [tropaId], references: [id])
+  tropa   Tropa? @relation(fields: [tropaId, compraId], references: [id, compraId])
 
   dte           String?
   transportista String?
@@ -286,8 +282,11 @@ model Lote {
   compraId Int
   compra   Compra @relation(fields: [compraId], references: [id])
 
+  // FK compuesta contra (id, compraId) de Tropa: garantiza que la tropa sea de
+  // ESTA compra y no de otra. Con tropaId NULL, Postgres no evalúa la
+  // restricción (MATCH SIMPLE), así que la atribución sigue siendo opcional.
   tropaId Int?
-  tropa   Tropa? @relation(fields: [tropaId], references: [id])
+  tropa   Tropa? @relation(fields: [tropaId, compraId], references: [id, compraId])
 
   categoriaSinonimoId Int
   categoriaSinonimo   CategoriaSinonimo @relation(fields: [categoriaSinonimoId], references: [id])

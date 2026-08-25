@@ -4,36 +4,67 @@ Registro del desarrollo: qué se decidió, por qué, qué se midió y qué qued�
 Formato de cada entrada: **fecha · qué pasó · por qué · qué queda**.
 El código lo escribe Claude Code en VS Code; acá va el análisis y el registro.
 
+> **Si volvés después de un corte, leé solo esta primera sección.** Dice dónde estamos y cuál es el próximo comando. Las entradas de abajo son el historial y el porqué de cada decisión; no hacen falta para retomar.
+
 ---
 
-## Estado actual
+## Dónde retomamos — actualizado 2026-08-25
+
+**Próximo paso concreto:** escribir la instancia del cliente con `@prisma/adapter-pg` contra `POSTGRES_PRISMA_URL`, **resolviendo bien el TLS** (ver «cosas que ya nos mordieron»). Después el seed de las 8 canónicas y los 258 sinónimos.
 
 | | |
 |---|---|
 | **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | Prompt de arranque escrito y medido. Sin código todavía. |
-| **Bloqueo** | 12 decisiones abiertas `[DECIDIR]` en el prompt de arranque |
-| **Stack** | Next.js (App Router) + Postgres + Vercel |
-| **Base de referencia** | `C:\Users\zemma\Claude\Projects\WinCompras\backend\db.sqlite3` |
+| **Situación** | **Primera migración aplicada y verificada contra la base.** 14 tablas creadas, base vacía. |
+| **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
+| **Repo** | `github.com/harambeiskappa/Compras` → proyecto `inaki-pegsa/compras` en Vercel |
+| **Base** | Supabase `compras-db`, São Paulo, plan free. Migración `20260825191736_modulos_1_y_2` aplicada. |
+| **Base de referencia** | `C:\Users\zemma\Claude\Projects\WinCompras\backend\db.sqlite3` (solo lectura) |
 
-### Decisiones abiertas que bloquean
+### Ya está hecho
 
-| # | Decisión | Bloquea |
-|---|---|---|
-| 7 | ¿Carga ↔ tropa es N:N? | el esquema |
-| 8 | ¿El lote se pesa junto en la balanza pública? | el grano del lote, y con él el módulo 4 |
-| 9 | ¿Padrón único de entidades o catálogos separados? | el esquema |
-| 10 | TRB: ¿comprador propio o tercero? | el seed |
-| 11 | ¿El formulario acepta lotes mixtos (`T`, `nov/vaq`)? | el esquema y la UI |
-| 1 | ¿Hay señal en la feria? | la arquitectura del formulario |
-| 2 | Link de carga: ¿token o login? ¿vence? | auth |
-| 3 | Qué campos son obligatorios | la UI |
-| 4 | Roles: quién carga, quién revisa, quién mira | auth |
-| 5 | Cómo vuelve el imprimible | alcance de la fase |
-| 6 | Compras de terceros en formato del consignatario | alcance de la fase |
-| 12 | ¿El DTE se trae de WinCampo o se tipea? | alcance de la fase |
+- Repo, GitHub, Vercel y Supabase enganchados. Primer deploy verde.
+- Scaffolding de Next.js: App Router, TypeScript, Tailwind, `src/`, ESLint, npm.
+- Prisma 7.10.0 pinneado exacto (CLI, client y `@prisma/adapter-pg`), con `prisma.config.ts`, generator `prisma-client` y `postinstall`.
+- `prisma/schema.prisma` completo y validado: 11 modelos, 3 enums, sin un solo `DEFAULT 0`.
+- `vercel link` y `vercel env pull` hechos: las variables están en `.env.local`.
+- `CLAUDE.md` con las decisiones fijas y las reglas duras del dominio.
+- **Primera migración aplicada.** Verificada consultando la base: el `CHECK (cabezas > 0)` está, las FK compuestas están, y ninguna de las seis columnas de cantidad/peso/precio/monto tiene default.
 
-Las cuatro primeras (7, 8, 9, 10) son las únicas que bloquean el esquema. Las demás se pueden cerrar mientras se construye.
+### Falta, en orden
+
+1. El cliente con el adapter (el próximo paso de arriba).
+2. El seed: 8 categorías canónicas y 258 sinónimos deduplicados por `textoNormalizado`. Requiere instalar `tsx` y escribir `prisma/seed.ts`, que hoy está declarado en el config pero no existe.
+3. Instanciar el cliente con el adapter contra `POSTGRES_PRISMA_URL` (la pooleada).
+4. La prueba contra el histórico: representar las 118 compras del último año en el modelo nuevo y listar las que no entren, con el motivo. Es la verificación exigida del punto 8.1 del prompt de arranque.
+5. Las pantallas de los módulos 1 y 2.
+
+### Decisiones abiertas
+
+Ninguna bloquea la migración. Las cuatro que bloqueaban el esquema están resueltas o cerradas con evidencia.
+
+| # | Decisión | Estado | Bloquea |
+|---|---|---|---|
+| 13 | Empresa titular vs. compradora | **Resuelta:** son dos conceptos distintos | — |
+| 7 | ¿Carga ↔ tropa es N:N? | Cerrada como N:1 con evidencia; si aparece el caso, el arreglo es aditivo | — |
+| 10 | TRB: ¿propio o tercero? | Sin resolver; `esPropio` quedó nullable a propósito | el seed |
+| 8 | ¿El lote se pesa junto en la balanza? | Sin resolver; hay evidencia fuerte de que no | el módulo 4 |
+| 9 | ¿Padrón único de entidades o catálogos separados? | Sin resolver; hoy son 4 catálogos | un refactor futuro |
+| 11 | ¿El formulario acepta lotes mixtos? | Sin resolver; el esquema los soporta igual | la UI |
+| 3 | Qué campos son obligatorios | Sin resolver; se asumió la lista del documento | la UI |
+| 1 | ¿Hay señal en la feria? | Sin resolver — preguntarle a Matías | la arquitectura del formulario |
+| 2 | Link de carga: ¿token o login? | Sin resolver | auth |
+| 4 | Roles: quién carga, revisa, mira | Sin resolver — copiar de `remates-app` | auth |
+| 5 | Cómo vuelve el imprimible | Sin resolver; `Adjunto.tipo` soporta las dos respuestas | alcance |
+| 6 | Compras de terceros | Sin resolver; `Adjunto.tipo` la soporta | alcance |
+| 12 | ¿El DTE se trae de WinCampo o se tipea? | Sin resolver; `Carga.dte` funciona en los dos casos | alcance |
+
+### Cosas que ya nos mordieron una vez
+
+- El tag `latest` de `prisma` en npm apunta a un release candidate: **cualquier `npm install prisma` sin versión trae el RC.**
+- Prisma 7 + Next 16 + Turbopack tiene un bug documentado (`Cannot find module ".prisma/client/default"`) que va a aparecer recién al levantar `next dev`.
+- Los resúmenes de Claude Code se equivocaron tres veces (la carpeta donde estaba parado, las flags del scaffolding, la lectura del registry). **Cuando dos lecturas no cierran, pedir los bytes crudos, no el resumen.**
+- El repo está una carpeta más adentro de lo que parece: `Projects\Compras\Compras`.
 
 ---
 
@@ -200,3 +231,68 @@ Formato: 11 compras estándar, 107 formato viejo.
 2. Dije que el pin iba a `7.9.1`, leyendo el registro público por HTTP. Esa lectura estaba vieja —caché de CDN— y el número correcto era `7.10.0`, que es lo que decía `prev` en la salida cruda de la propia máquina.
 
 En los dos casos el dato bueno salió de pedir la **salida cruda sin resumir**. Vale como regla: cuando dos lecturas no cierran, pedir los bytes, no el resumen.
+
+---
+
+### 2026-08-25 · Prisma 7 instalado y la decisión #13, resuelta
+
+**Dependencias.** `prisma`, `@prisma/client` y `@prisma/adapter-pg` pinneadas exactas a `7.10.0`, sin caret, y el lockfile sin rastros de `-rc`/`-dev`/`-integration`. `pg` entra como dependencia del adapter. `dotenv` como devDep.
+
+**Prisma 7 cambió de forma, y eso invalidó parte del plan.** No es solo que `datasource.url` salga del schema: son cuatro cambios. La URL y las rutas de schema, migraciones y seed van a `prisma.config.ts`; el generator `prisma-client-js` queda legacy y va `prisma-client` con `output` obligatorio; Postgres necesita el driver adapter `@prisma/adapter-pg` y el cliente se instancia con `new PrismaClient({ adapter })`. Verificado contra la documentación oficial, no supuesto.
+
+**Dos trampas de despliegue anotadas antes de pisarlas.** Vercel cachea `node_modules` entre deploys y el cliente generado no se commitea, así que hace falta `"postinstall": "prisma generate"` o el build de producción falla aunque ande en local. Y Prisma 7 + Next 16 + Turbopack tiene un bug documentado (`Cannot find module ".prisma/client/default"`) que va a aparecer recién al levantar `next dev`.
+
+**El `.env` de Prisma apunta a `.env.local`.** `prisma.config.ts` importa `dotenv/config`, que lee `.env`, pero las credenciales se traen con `vercel env pull`, que sin argumentos escribe en `.env.local`. Se decidió cambiar el config y no el flujo: si moviéramos el destino del pull, el día que alguien corra el comando pelado Prisma se rompe sin motivo aparente. Que el archivo raro sea el config, no el flujo estándar.
+
+**Decisión #13, resuelta — y no era una duplicación.** La pregunta de esquema escondía una de dominio: *cuando en la misma feria y el mismo día se compra para varias empresas, ¿es una compra o varias?* La respuesta de Iñaki: **PEGSA siempre va sola y UGM siempre va aparte, pero si Bulltrade compró poco se puede agregar a la compra de PEGSA.**
+
+O sea que son dos conceptos distintos y ambos campos se quedan, con nombres que no se confundan:
+- `Compra.empresaTitular` — bajo qué empresa se registra la compra. Se contesta en el módulo 1, antes de que exista una tropa.
+- `Tropa.empresaCompradora` — a quién le quedan efectivamente esas cabezas.
+
+**Validación:** la titular tiene que aparecer entre las empresas de las tropas de esa compra. No puede ser constraint de base, porque en el módulo 1 todavía no hay tropas: es una validación al cerrar el módulo 2.
+
+**Consecuencia para el formulario:** la empresa de cada tropa viene precargada con la titular, y solo se cambia en el caso excepcional. El camino común queda sin clicks y la excepción, explícita.
+
+**Qué queda.** Aplicar el renombre y la validación, y recién ahí la primera migración.
+
+---
+
+### 2026-08-25 · Esquema cerrado, listo para la primera migración
+
+**Última revisión, leyendo el archivo y no el resumen.** Tres cosas salieron de ahí:
+
+1. **`Empresa.compras` → `comprasComoTitular`.** Ahora que titular y compradora son conceptos distintos, la back-relation vieja se leía como «las compras de esta empresa» cuando en realidad es «donde figura como titular».
+
+2. **Un lote podía colgarse de una tropa de otra compra.** `Lote` tenía `compraId` obligatorio y `tropaId` opcional, sin nada que garantizara que esa tropa fuera de esa compra: se podía grabar un lote de la compra 5 apuntando a una tropa de la compra 9. Igual con `Carga`. Se cerró con clave foránea compuesta — `@@unique([id, compraId])` en `Tropa`, y `(tropaId, compraId)` referenciando ese par desde `Lote` y `Carga`. Con `tropaId` en NULL Postgres no chequea nada, así que el caso «todavía no sé la tropa» sigue funcionando.
+
+   *Es la filosofía del proyecto aplicada al esquema:* que el estado incorrecto no se pueda escribir, en vez de salir a detectarlo después. Tres líneas hoy; más adelante habría sido una migración con filas mal apuntadas que limpiar.
+
+   *Efecto lateral a recordar:* `lote.compraId` participa ahora de dos FK a la vez. Mover un lote de compra con una tropa ya asignada va a fallar salvo que la tropa también sea de la compra nueva. Es correcto —eso es una imputación mal hecha, no una corrección— pero va a sorprender el día que pase.
+
+3. **`DATABASE_URL` probablemente no existe.** La integración de Supabase con Vercel inyecta un juego `POSTGRES_*`. Además Supabase da **dos** cadenas: una pooleada por pgbouncer y una directa. Las migraciones tienen que ir contra la directa (pgbouncer rompe los locks y los prepared statements de `migrate`) y el adapter de la app contra la pooleada (en serverless, sin pool se agotan las conexiones). Como el `prisma.config.ts` lo usa el CLI y el adapter se instancia en el código, la separación sale natural: **config → directa, adapter → pooleada.**
+
+**Bloqueado en:** `vercel login` / `link` / `env pull` son interactivos y los tiene que correr Iñaki. Hasta tener los nombres reales de las variables no se tocan ni `prisma.config.ts` ni el comentario de `schema.prisma:11-13`, que hoy nombran `DATABASE_URL`.
+
+---
+
+### 2026-08-25 · Primera migración: `20260825191736_modulos_1_y_2`
+
+**Qué hay.** 14 tablas en Supabase. La migración se generó con `--create-only`, se le agregó a mano el `CHECK (cabezas > 0)` que Prisma no genera, y recién después se aplicó.
+
+**Lo verificado, consultando la base y no el archivo:**
+- Ninguna de las seis columnas de cantidad, peso, precio o monto tiene default de ningún tipo. Los únicos `DEFAULT` del archivo son cinco `activo BOOLEAN DEFAULT true` y once `creadoEn DEFAULT CURRENT_TIMESTAMP`.
+- `lote_cabezas_positivas_check` presente.
+- `UNIQUE (id, compraId)` en `tropa` y las dos FK compuestas de `lote` y `carga` apuntando a ese par, sin `MATCH FULL` — o sea `MATCH SIMPLE`, y un `tropaId` NULL no dispara el chequeo, que es exactamente lo buscado.
+
+**Una corrección al criterio que yo había dado.** Dije «conexión directa vs. pooleada». Es inexacto: las tres URL que inyecta Supabase van al mismo host pooler, porque Supabase dejó la conexión directa a `db.<ref>.supabase.co` como IPv6-only y rutea todo por ahí. Lo que distingue a `POSTGRES_URL_NON_POOLING` es el **puerto 5432, session mode**, que preserva prepared statements y locks de sesión. El que rompe `migrate` es el 6543, *transaction mode*. La decisión era la correcta pero por el motivo equivocado, y el criterio bueno —**session vs. transaction**— es el que quedó escrito en `CLAUDE.md`.
+
+| variable | puerto | modo | para |
+|---|---|---|---|
+| `POSTGRES_URL_NON_POOLING` | 5432 | session | migraciones (CLI) |
+| `POSTGRES_PRISMA_URL` | 6543 | transaction | el adapter de la app |
+| `POSTGRES_URL` | 6543 | transaction | — |
+
+**Un problema que espera en el adapter.** El `pg` que trae `@prisma/adapter-pg` trata `sslmode=require` como `verify-full`, y la cadena de certificados de Supabase no valida contra el store por defecto: `self-signed certificate in certificate chain`. Prisma no lo sufre al migrar porque usa su propio engine, no `pg`. Se esquivó con `rejectUnauthorized: false` **solo dentro de un script de verificación efímero**, nunca como configuración. Al escribir el cliente hay que resolverlo de verdad, con el CA de Supabase.
+
+**Qué queda.** El cliente con el adapter, después el seed.
