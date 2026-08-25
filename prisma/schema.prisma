@@ -1,0 +1,337 @@
+// Esquema de los módulos 1 (información de la compra) y 2 (compra).
+// Reglas duras del dominio en CLAUDE.md. Sin dato es NULL y se muestra «s/d»:
+// no hay DEFAULT 0 en ninguna columna de cantidad, peso, precio o monto, y cada
+// NOT NULL tiene su justificación escrita al lado.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// La URL de conexión NO va acá: en Prisma 7 `datasource.url` dejó de admitirse
+// en el schema y vive en `prisma.config.ts` (env DATABASE_URL, inyectada por
+// Vercel). El cliente se instancia con `new PrismaClient({ adapter })`.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Catálogos ----------
+
+model Empresa {
+  id       Int      @id @default(autoincrement())
+  nombre   String
+  // Nullable a propósito: DECIDIR #10 (TRB propio o tercero) sigue sin resolver.
+  // Si fuera NOT NULL, el seed estaría obligado a inventar una respuesta.
+  esPropio Boolean?
+  activo   Boolean  @default(true)
+
+  prefijos PrefijoTropa[]
+  compras  Compra[]
+  tropas   Tropa[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("empresa")
+}
+
+// Un mismo comprador puede tener más de un prefijo de tropa (por eso 1:N y no
+// una columna suelta en Empresa). Ver DECIDIR #10 sobre qué nombres van acá.
+model PrefijoTropa {
+  id        Int     @id @default(autoincrement())
+  codigo    String  @unique // ej. "PEG", "TAP", "LTA"
+  empresaId Int
+  empresa   Empresa @relation(fields: [empresaId], references: [id])
+
+  @@map("prefijo_tropa")
+}
+
+model Consignatario {
+  id     Int     @id @default(autoincrement())
+  nombre String
+  activo Boolean @default(true)
+
+  compras Compra[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("consignatario")
+}
+
+model Vendedor {
+  id     Int     @id @default(autoincrement())
+  nombre String
+  activo Boolean @default(true)
+
+  compras Compra[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("vendedor")
+}
+
+model Hotelero {
+  id     Int     @id @default(autoincrement())
+  nombre String
+  activo Boolean @default(true)
+
+  compras Compra[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("hotelero")
+}
+
+// Sin precedente histórico: no existe en ningún lado del sistema viejo.
+model PersonaCompradora {
+  id     Int     @id @default(autoincrement())
+  nombre String
+  activo Boolean @default(true)
+
+  compras Compra[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("persona_compradora")
+}
+
+// Las 8 canónicas: NV, NT, VQ, VA, TO, TM, TH, T.
+model Categoria {
+  id          Int    @id @default(autoincrement())
+  codigo      String @unique
+  descripcion String
+
+  sinonimos CategoriaSinonimo[]
+
+  @@map("categoria")
+}
+
+// `texto` guarda el string tal cual vino de la fuente (ej. "MEJ", " Mej ") —
+// es el dato crudo y no se toca. `textoNormalizado` es ese mismo string con
+// trim + minúsculas, y es el que lleva el @unique: así "mej", "MEJ" y "Mej"
+// colapsan en UNA fila sin necesidad de la extensión citext de Postgres.
+// Consecuencia para el seed: los 258 sinónimos históricos entran deduplicados
+// por `textoNormalizado`, no uno por cada variante de may/min o espacios.
+// Quien escriba el importador debe normalizar ANTES de insertar o buscar.
+//
+// categoriaCanonicaId NULL = pendiente de mapeo: no se adivina, lo resuelve una
+// persona. El Lote se guarda igual, completo; lo único que queda pendiente es
+// la resolución del mapeo canónico.
+model CategoriaSinonimo {
+  id                  Int        @id @default(autoincrement())
+  texto               String
+  textoNormalizado    String     @unique
+  categoriaCanonicaId Int?
+  categoriaCanonica   Categoria? @relation(fields: [categoriaCanonicaId], references: [id])
+
+  lotes Lote[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("categoria_sinonimo")
+}
+
+// ---------- Dominio de la compra (módulos 1 y 2) ----------
+
+// ============================================================================
+// DECIDIR #13 — DUPLICACIÓN DE `empresaCompradora`: SIN RESOLVER
+//
+// Hoy este dato existe en DOS lugares: `Compra.empresaCompradoraId` y
+// `Tropa.empresaCompradoraId`. Eso viola la regla «un concepto, un lugar» —
+// exactamente el error que más caro salió en WinCompras. Nada en el esquema
+// impide que la Compra diga PEG mientras sus tropas dicen LTA, y en una compra
+// con dos tropas de empresas distintas `Compra.empresaCompradoraId` es
+// directamente ambiguo: no hay valor correcto para esa columna.
+//
+// El estado actual del archivo NO es la decisión: es la duplicación en crudo,
+// dejada a la vista para resolverla antes de la primera migración.
+// NO MIGRAR ASÍ.
+//
+// Opción A — el dato vive solo en `Tropa`.
+//   Se borra `Compra.empresaCompradoraId` y su relación. El módulo 1 crea la
+//   primera `Tropa` con `nroTropa` NULL, porque el número lo genera WinCampo
+//   más tarde (cobertura histórica de nro_tropa: 5,1%).
+//   A favor: una sola fuente de verdad, imposible que diverja.
+//   Costo: no existe «la compra» sin al menos una tropa, y el módulo 1 pasa a
+//   escribir en dos tablas en vez de una.
+//
+// Opción B — son dos conceptos distintos, con nombres distintos.
+//   `Compra.empresaCompradoraId` se renombra a lo que realmente es (la empresa
+//   a cuyo nombre se cerró la operación en la feria) y `Tropa.empresaCompradoraId`
+//   queda como la empresa que recibe esas cabezas.
+//   A favor: refleja el caso de reparto sin forzar nada.
+//   Costo: exige una validación de consistencia explícita entre la empresa de
+//   la compra y las de sus tropas, que el esquema no puede expresar por sí solo
+//   — vive en la capa de aplicación, y hay que escribirla.
+// ============================================================================
+
+model Compra {
+  id    Int      @id @default(autoincrement())
+  fecha DateTime @db.Date
+
+  consignatarioId Int
+  consignatario   Consignatario @relation(fields: [consignatarioId], references: [id])
+
+  // Ver DECIDIR #13 arriba. Duplicado con Tropa.empresaCompradoraId, sin resolver.
+  empresaCompradoraId Int
+  empresaCompradora   Empresa @relation(fields: [empresaCompradoraId], references: [id])
+
+  vendedorId Int?
+  vendedor   Vendedor? @relation(fields: [vendedorId], references: [id])
+
+  hoteleroId Int?
+  hotelero   Hotelero? @relation(fields: [hoteleroId], references: [id])
+
+  personaCompradoraId Int?
+  personaCompradora   PersonaCompradora? @relation(fields: [personaCompradoraId], references: [id])
+
+  plazaLugar String?
+
+  comision          Decimal?           @db.Decimal(14, 2)
+  comisionModalidad ModalidadComision?
+
+  observaciones String?
+
+  tropas   Tropa[]
+  cargas   Carga[]
+  lotes    Lote[]
+  adjuntos Adjunto[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("compra")
+}
+
+// Nullable en nroTropa/fecha: los genera WinCampo y pueden no conocerse cuando
+// el comprador carga desde la feria (cobertura histórica de nro_tropa: 5,1%).
+// nroTropa lleva @unique replicando el UNIQUE que tenía ingresos_tropa; al ser
+// nullable, Postgres deja convivir varios NULL bajo un índice único, así que la
+// restricción aplica solo a los números ya conocidos, que es lo que se quiere.
+model Tropa {
+  id       Int    @id @default(autoincrement())
+  compraId Int
+  compra   Compra @relation(fields: [compraId], references: [id])
+
+  // Ver DECIDIR #13 arriba. Duplicado con Compra.empresaCompradoraId, sin resolver.
+  empresaCompradoraId Int
+  empresaCompradora   Empresa @relation(fields: [empresaCompradoraId], references: [id])
+
+  nroTropa String?   @unique
+  fecha    DateTime? @db.Date
+
+  cargas Carga[]
+  lotes  Lote[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("tropa")
+}
+
+// DECIDIR #7 (carga↔tropa): lo cierro como N:1 (una carga pertenece a lo sumo
+// una tropa; una tropa puede tener varias cargas), con tropaId NULLABLE porque
+// la tropa muchas veces todavía no se conoce cuando se carga el camión en la
+// feria.
+model Carga {
+  id       Int    @id @default(autoincrement())
+  compraId Int
+  compra   Compra @relation(fields: [compraId], references: [id])
+
+  tropaId Int?
+  tropa   Tropa? @relation(fields: [tropaId], references: [id])
+
+  dte           String?
+  transportista String?
+  patente       String?
+  fechaSalida   DateTime? @db.Date
+  destino       String?
+  flete         Decimal?  @db.Decimal(14, 2)
+
+  // Cuántos animales declara el DTE que se mueven en este camión. Es un hecho
+  // capturado del documento, no un total derivado: los Lote cuelgan de Compra
+  // (con tropaId opcional) y nunca de Carga, así que esta cantidad no se puede
+  // reconstruir sumando lotes. Nullable porque el DTE es uno de los dos
+  // agujeros grandes de cobertura junto con el flete.
+  cabezas Int?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("carga")
+}
+
+enum ModalidadPrecio {
+  KG
+  CABEZA
+  BULTO
+}
+
+enum ModalidadComision {
+  PORCENTAJE
+  MONTO
+}
+
+// tropaId NULLABLE y opcional a propósito: el lote siempre cuelga de la
+// compra (compraId NOT NULL); tropaId es una atribución opcional para cuando
+// hace falta saber a qué empresa/tropa corresponden esas cabezas dentro de
+// una compra con reparto.
+model Lote {
+  id       Int    @id @default(autoincrement())
+  compraId Int
+  compra   Compra @relation(fields: [compraId], references: [id])
+
+  tropaId Int?
+  tropa   Tropa? @relation(fields: [tropaId], references: [id])
+
+  categoriaSinonimoId Int
+  categoriaSinonimo   CategoriaSinonimo @relation(fields: [categoriaSinonimoId], references: [id])
+
+  // Única columna de cantidad NOT NULL del esquema. En 2401 renglones
+  // históricos de liquidaciones_detalleliquidacion, 0 tienen cantidad_cabezas
+  // NULL y 0 tienen categoria_id NULL: categoría+cabezas es el par que siempre
+  // estuvo presente. Un lote existe para declarar una cantidad de cabezas de
+  // una categoría; sin cabezas la fila no tiene razón de ser.
+  // Pendiente para cuando se genere la migración: agregar a mano un
+  // CHECK (cabezas > 0). Hay exactamente 1 fila histórica con 0 cabezas y es un
+  // error de carga, no un hecho de negocio.
+  cabezas Int
+
+  // Peso, no dinero: se queda en Decimal(10, 2).
+  kilosOrigen Decimal? @db.Decimal(10, 2)
+
+  precio          Decimal?         @db.Decimal(14, 2)
+  modalidadPrecio ModalidadPrecio?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("lote")
+}
+
+enum TipoAdjunto {
+  REMITO_FERIA // remitos de feria del módulo 2 (número + foto)
+  ORIGEN_TERCERO // DECIDIR #6: original del consignatario, sin parsear
+  IMPRIMIBLE // DECIDIR #5: la A4 completada a mano, si vuelve por foto
+}
+
+// Generalizado en vez de una tabla RemitoFeria + una columna suelta por cada
+// tipo de documento nuevo que aparezca (regla: un concepto, un lugar).
+model Adjunto {
+  id       Int    @id @default(autoincrement())
+  compraId Int
+  compra   Compra @relation(fields: [compraId], references: [id])
+
+  tipo   TipoAdjunto
+  url    String
+  numero String? // aplica solo a REMITO_FERIA
+
+  creadoEn DateTime @default(now())
+
+  @@map("adjunto")
+}

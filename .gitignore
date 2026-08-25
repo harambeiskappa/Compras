@@ -40,5 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# prisma client generado (se regenera con postinstall, no se commitea)
+/src/generated/
+
 # claude code (settings personales, no compartidos)
 .claude/settings.local.json
