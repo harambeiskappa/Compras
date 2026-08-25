@@ -6,8 +6,12 @@ App para registrar la compra de hacienda de punta a punta, reemplazando el Excel
 
 ## Decisiones fijas — no volver a decidirlas
 
-- **Stack:** Next.js 16 (App Router) + TypeScript + Tailwind + Postgres. Deploy en Vercel.
+- **Stack:** Next.js 16 (App Router) + TypeScript + Tailwind. Deploy en Vercel.
 - **Scaffolding:** npm, Tailwind sí, carpeta `src/` sí, alias `@/*`. Ya está hecho.
+- **Base:** Postgres de Supabase (región São Paulo), conectada por la integración de Vercel. Las credenciales llegan como variables de entorno inyectadas por Vercel — **nunca hardcodearlas ni commitearlas**. En local se traen con `vercel env pull .env.local`; `.env*` ya está en el `.gitignore`.
+- **ORM: Prisma.** El esquema vive en `prisma/schema.prisma` y las migraciones en `prisma/migrations/`, ambos versionados en el repo. **Prohibido crear o modificar tablas desde el editor de Supabase**: el esquema tiene que existir en el repo, con historial y reproducible. Un mismo dato definido en dos lugares diverge.
+- **Versiones de Prisma pinneadas exactas a `7.10.0`** (CLI y client), sin caret. Al 25/08/2026 el tag `latest` de `prisma` en npm apunta a `8.0.0-rc.10`, un release candidate: **cualquier `npm install prisma` sin versión trae el RC**. Nunca destildar el pin ni correr un update a ciegas; si hace falta subir de versión, verificar antes qué devuelve `npm view prisma dist-tags --json`. El `package-lock.json` es lo que usa Vercel en el build, así que tiene que quedar commiteado.
+- **Supabase Storage** para los adjuntos (fotos de remitos). Las fotos se comprimen del lado del cliente antes de subir — el plan free tiene 1 GB y una foto de celular sin comprimir pesa ~3 MB.
 - **Documento de arranque de la fase:** `docs/prompt-arranque-modulos-1-2.md`. Leerlo antes de proponer esquema o pantallas. Tiene 12 decisiones marcadas `[DECIDIR]`: **no resolverlas por cuenta propia** — si una bloquea el trabajo, decir cuál y qué se está suponiendo.
 - **Base histórica de referencia:** la carpeta `WinCompras` del workspace, archivo `backend/db.sqlite3`. Consultarla con `sqlite3` por línea de comandos o un script Python. **Nunca leerla con el Read tool**: son 7,5 MB binarios.
 

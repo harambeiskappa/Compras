@@ -122,3 +122,81 @@ Formato: 11 compras estándar, 107 formato viejo.
 - Importar el repo a Vercel — ahora sí buildea.
 - Elegir Postgres y cargar la connection string como variable de entorno. `.gitignore` ya excluye `.env*`, así que no hay riesgo de que se filtre.
 - Recién ahí, la propuesta de esquema.
+
+---
+
+### 2026-08-24 · Infraestructura completa y decisión de ORM
+
+**Qué hay.** El circuito entero enganchado: repo `harambeiskappa/Compras` → Vercel (proyecto `compras`, primer deploy verde) → Supabase (`compras-db`, plan free, región São Paulo). Variables de entorno inyectadas por la integración, marcadas como sensibles, disponibles en Production, Preview y Development.
+
+**Decisión: Prisma.** El esquema en `prisma/schema.prisma`, las migraciones en `prisma/migrations/`, todo versionado.
+
+*Por qué, y el razonamiento importa más que la elección.* Las tres opciones (Prisma, Drizzle, SQL a mano) hacen lo mismo. Lo que inclinó la balanza no fue técnico: **Iñaki es quien revisa que ninguna columna tenga `DEFAULT 0`**, y esa revisión se va a repetir muchas veces. Con Prisma es abrir un archivo y leer una lista; con SQL a mano hay que seguir el hilo entre varios archivos de migración. La contra conocida de Prisma —más peso en serverless, arranques en frío algo más lentos— no se nota con la cantidad de usuarios que va a tener esta app.
+
+**Regla que se desprende:** prohibido crear o modificar tablas desde el editor de Supabase. Es cómodo y es una trampa: el esquema terminaría existiendo solo en la nube, sin historial y divergiendo del repo. Ya sabemos cómo termina eso.
+
+**Una cuenta para el módulo 2.** El plan free de Supabase da 1 GB de file storage. Con 128 compras al año y una o dos fotos de remito por compra, a ~3 MB por foto de celular sin comprimir, se llena en el primer año. Las fotos tienen que comprimirse del lado del cliente antes de subir: un remito legible entra cómodo en 300-400 KB.
+
+**Riesgo asumido, a revisar más adelante.** Development quedó apuntando a la misma base que Production. Hoy da igual porque está vacía; cuando haya compras cargadas de verdad hay que separarlas, porque una migración corrida en local tocaría datos reales.
+
+**Se agregó `CLAUDE.md`** en la raíz con las decisiones fijas y las reglas duras del dominio. Nace de un patrón observado: en dos planes seguidos, Claude Code volvió a decidir por su cuenta cosas ya resueltas, porque cada conversación nueva arranca sin memoria.
+
+**Qué queda.** La propuesta de esquema Postgres. Es lo próximo.
+
+---
+
+### 2026-08-24 · Propuesta de esquema: revisión y correcciones
+
+**Qué pasó.** Claude Code propuso el `schema.prisma` completo y la sesión se cortó por límite de uso justo antes de ejecutar. No se perdió nada: el transcript quedó en disco y el plan se recuperó entero. Prisma todavía no está instalado.
+
+**Lo que hizo bien la propuesta.** Midió contra la base histórica en vez de suponer, se hizo revisar por un segundo agente, y —lo más valioso— **contradijo al documento de arranque con evidencia**: el caso «75 PEG + 5 LTA en un camión» no existe en los datos. Los casos reales más parecidos (Darwash 06/05/25 con PEG+BUL+UGM; Villegas 16/07/25 con PEG+LTA) resultaron ser camiones, tropas y DTE separados el mismo día, no un reparto dentro de un mismo camión. Sobre esa base cerró la decisión #7 (carga↔tropa) como N:1, dejando anotado que si el caso aparece, el arreglo es una tabla puente y es aditivo.
+
+**Hallazgos sobre el sistema viejo que conviene no perder.**
+- No existe tabla `compra` ni tabla `lote`: «la compra» es una fila de `liquidaciones_liquidacion` (un Excel = una fila) y «el lote» un renglón colgado directo de ahí, sin ningún vínculo con tropa.
+- De los cuatro roles, **el único normalizado es empresa compradora** (`ingresos_tropa.comprador_id`, FK real). Consignatario, vendedor y hotelero son texto libre, y persona compradora no existe en ninguna forma.
+- El mismo actor aparece en varios roles: DARWASH SA es consignatario en 239 tropas y proveedor en 143; PEGSA es hotelero en 577. Dato a favor de un padrón único cuando se retome la decisión #9.
+- `detalleliquidacion.desbaste` y `.peso_origen` están en NULL en **2401 de 2401** filas: nunca se usaron. El desbaste real se calcula por tropa sumando jaulas, no por categoría. Evidencia fuerte para la decisión #8.
+
+**Cinco correcciones pedidas antes de migrar.**
+
+1. **`empresaCompradora` está en `Compra` y en `Tropa`.** El mismo dato en dos lugares, que es la regla que más caro salió en WinCompras. En una compra con dos tropas de empresas distintas, `Compra.empresaCompradora` es ambiguo, y nada impide que diga PEG mientras sus tropas dicen LTA. Hay dos salidas y la decisión es de Iñaki: que el dato viva solo en `Tropa` (y el módulo 1 cree la primera tropa, con `nroTropa` en NULL), o que sean dos conceptos distintos con nombres distintos más una validación de consistencia. **Queda como decisión abierta #13.**
+
+2. **`Carga` no tiene cabezas.** El DTE declara cuántos animales se mueven, y como los lotes cuelgan de `Tropa` y no de `Carga`, tampoco es derivable. Sin eso no se puede contestar «cuántas cabezas iban en esta jaula», que es lo que va a hacer falta en recepción con las guías por jaula. Es un hecho capturado, no un total: `Carga.cabezas Int?`.
+
+3. **`Tropa.nroTropa` va `@unique`.** En `ingresos_tropa` era `NOT NULL UNIQUE`; es la identidad fuerte del ingreso. Siendo nullable, Postgres deja convivir los NULL sin quejarse.
+
+4. **Normalización de sinónimos: decidir ahora, no después.** Define qué filas entran en el seed — con normalización, `mej`/`MEJ`/`Mej` colapsan en una; sin ella, quedan tres. La solución evita la extensión `citext`: guardar `texto` (como vino) y `textoNormalizado` (trim + minúsculas) con el `@unique` sobre el normalizado.
+
+5. **Columnas de dinero a `Decimal(14,2)`.** Con `(10,2)` topean en 99.999.999 y un precio por cabeza lo va a superar pronto.
+
+**Anotado para el formulario, no para el esquema.** `Lote.tropaId` nullable está bien, pero si queda vacío el desbaste por lote del módulo 4 no se puede calcular. Es la misma trampa que `kg_origen` al 9,3 %: nadie lo llenó porque nada lo pedía. Tiene que estar visible en la pantalla, no escondido.
+
+**Qué queda.** Que Claude Code aplique las cinco correcciones, y recién ahí la migración.
+
+---
+
+### 2026-08-25 · Prisma: el tag `latest` de npm apunta a un release candidate
+
+**Qué pasó.** Al instalar Prisma, el CLI quedó en `8.0.0-rc.10` y el client en `7.10.0`: desalineados por un major. Claude Code lo detectó solo antes de seguir.
+
+**La causa, después de descartar dos hipótesis mías equivocadas.** No fue caché de npm ni un registry proxy — se verificó con caché limpio y `registry = https://registry.npmjs.org/`. Es el estado real del paquete upstream:
+
+```
+"latest": "8.0.0-rc.10",
+"next":   "8.0.0-rc.10",
+"prev":   "7.10.0",
+```
+
+`latest` y `next` apuntan al mismo valor: el RC pisó el tag estable. Por la marca de tiempo del manifiesto, `7.10.0` se publicó prácticamente el mismo día, así que tiene pinta de error de publicación de Prisma más que de decisión.
+
+**Decisión: pinnear exacto a `7.10.0`** (CLI y client), sin caret.
+
+**Consecuencia que hay que recordar:** mientras el tag siga así, cualquier `npm install prisma` sin versión trae el release candidate. Quedó escrito en `CLAUDE.md`.
+
+**Lo que importa más que el número: el `package-lock.json` es lo que Vercel usa para el build.** El `package.json` es una intención; el lockfile es el candado. Tiene que quedar commiteado.
+
+**Dos correcciones a lo que yo había dicho antes**, anotadas porque el método vale más que el acierto:
+1. Dije que ambas versiones venían de canales de prueba. Falso: `@prisma/client` en `7.10.0` era su estable correcto. El único desalineado era el CLI.
+2. Dije que el pin iba a `7.9.1`, leyendo el registro público por HTTP. Esa lectura estaba vieja —caché de CDN— y el número correcto era `7.10.0`, que es lo que decía `prev` en la salida cruda de la propia máquina.
+
+En los dos casos el dato bueno salió de pedir la **salida cruda sin resumir**. Vale como regla: cuando dos lecturas no cierran, pedir los bytes, no el resumen.
