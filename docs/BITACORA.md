@@ -10,12 +10,12 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ## Dónde retomamos — actualizado 2026-08-25
 
-**Próximo paso concreto:** agregar `prisma migrate deploy` al script de `build` (hoy nadie migra en el deploy), levantar `next dev` una vez para ejercitar el bug de Turbopack en aislamiento, y después el seed: 8 categorías canónicas y 258 sinónimos deduplicados por `textoNormalizado` desde `WinCompras/backend/db.sqlite3`.
+**Próximo paso concreto: pushear y mirar el deploy.** Nada se deployó desde el scaffold pelado: `migrate deploy` en el build, el `postinstall`, el CA inline y el adapter **solo corrieron en local**. Después de eso, la prueba contra el histórico (punto 8.1 del prompt de arranque).
 
 | | |
 |---|---|
 | **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | Base migrada, con RLS, y el cliente conectando por TLS verificado. **Base vacía: falta el seed.** |
+| **Situación** | Base migrada, con RLS, catálogos sembrados y el cliente andando. **Nada de esto se deployó todavía.** |
 | **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
 | **Repo** | `github.com/harambeiskappa/Compras` → proyecto `inaki-pegsa/compras` en Vercel |
 | **Base** | Supabase `compras-db`, São Paulo, plan free. Migración `20260825191736_modulos_1_y_2` aplicada. |
@@ -32,14 +32,20 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 - **Primera migración aplicada.** Verificada consultando la base: el `CHECK (cabezas > 0)` está, las FK compuestas están, y ninguna de las seis columnas de cantidad/peso/precio/monto tiene default.
 - **RLS activado en las 14 tablas**, sin políticas, con `relforcerowsecurity = false` para preservar el bypass del dueño. Verificado que Prisma sigue leyendo después.
 - **Cliente conectando**, con el CA de Supabase inline y verificado por fingerprint contra el root que presenta el servidor.
+- **`prisma migrate deploy` en el script de build**, verificado pisando la variable con un host inválido para confirmar que lee `POSTGRES_URL_NON_POOLING`.
+- **`next dev` levanta y el bug de Turbopack NO aparece**: con el generator `prisma-client` de Prisma 7 emitiendo TypeScript a `src/generated/`, no hay ningún `.prisma/client` que resolver.
+- **Seed de categorías:** 8 canónicas y 217 sinónimos (de 258 filas, 41 colapsaron por dedup), 199 mapeados y 18 pendientes.
 
 ### Falta, en orden
 
-1. `prisma migrate deploy` en el build, y el smoke de `next dev` (el próximo paso de arriba).
-2. El seed: 8 categorías canónicas y 258 sinónimos deduplicados por `textoNormalizado`. Requiere instalar `tsx` y escribir `prisma/seed.ts`, que hoy está declarado en el config pero no existe.
-3. Instanciar el cliente con el adapter contra `POSTGRES_PRISMA_URL` (la pooleada).
-4. La prueba contra el histórico: representar las 118 compras del último año en el modelo nuevo y listar las que no entren, con el motivo. Es la verificación exigida del punto 8.1 del prompt de arranque.
+1. **Pushear y mirar el primer deploy con Prisma adentro** (el próximo paso de arriba).
+2. El seed de empresas: bloqueado, ver abajo.
+3. La prueba contra el histórico: representar las 118 compras del último año en el modelo nuevo y listar las que no entren, con el motivo. Es la verificación exigida del punto 8.1 del prompt de arranque.
 5. Las pantallas de los módulos 1 y 2.
+
+### Bloqueado esperando a Iñaki
+
+**El seed de empresas.** En `catalogos_comprador` están los 11 prefijos (PEG, BUL, DAR, TAP, LTA, ALO, PEC, LTP, TRB, UGM, SAG) pero **la columna de nombre está vacía en las once**. Hace falta la razón social real de cada una y, sobre todo, **cuáles comparten empresa**: TAP y LTA son las dos Las Taperas, pero no se sabe si PEC o LTP son otra cosa o alias de alguna ya listada. No sale de ningún lado.
 
 ### Decisiones abiertas
 
@@ -341,3 +347,41 @@ No hay URL pública para bajarlo: solo desde el dashboard (Settings → Database
 - **Los tres entornos comparten base.** Production, Preview y Development apuntan a la misma, así que cualquier build va a migrar la única que hay. `migrate deploy` es idempotente, así que hoy no rompe — pero es la primera vez que esa decisión roza. **A revisar cuando haya datos reales.**
 
 **Nota sobre `tsx`.** El smoke test corrió sin instalarlo, aprovechando el type stripping nativo de Node 25. Para el seed conviene instalarlo igual: `prisma.config.ts` lo declara, y no todas las máquinas ni el runtime de Vercel corren Node 25.
+
+---
+
+### 2026-08-25 · Seed de categorías, y el deploy sin probar
+
+**Health check honesto.** `/api/salud` devuelve `{ok:true}` o un 503 `{ok:false}`, sin conteos — publicaba volumen de negocio a cualquiera que encontrara la URL. Se probaron **las dos ramas**, porque el valor de un health check está en la que falla. Lleva `force-dynamic`: sin eso Next puede evaluarla en el build y devolver una respuesta cacheada, que para un health check es lo contrario de lo que se busca.
+
+**Un número plausible sacado con la herramienta equivocada.** Contando con SQL daban **218** sinónimos únicos; con la semántica real del seed son **217**. La causa: `lower()` de SQLite solo pliega ASCII y `toLowerCase()` de JS pliega Unicode, así que `vaca preñada` y `VACA PREÑADA` colapsan en el seed y no colapsarían en SQL. Quedó escrito en el código para que nadie se asuste comparando contra un conteo de SQL. Es la lección del proyecto otra vez: medir con la herramienta que va a correr, no con una parecida.
+
+**El resultado, leído de Postgres:** 8 canónicas; 258 filas leídas → 217 sinónimos, 41 colapsados por dedup, 199 mapeados y 18 pendientes. Reparto: VA 70, TM 32, NT 21, VQ 18, NV 17, T 16, TH 14, TO 11. MEJ entró como sinónimo apuntando a TO, y no existe canónica MEJ. Cero duplicados, cero normalizados mal formados, cero FK huérfanas. Idempotencia probada corriéndolo dos veces.
+
+**Los 18 pendientes de mapeo:** `130`, `crías`, `hembra`, `hembras`, `invernada x kg`, `machos`, `nov/vaq`, `novillito/bulto`, `novillo/bulto`, `overito`, `overitos`, `preñadas`, `ternaro`, `terneras/caida`, `va/c ria`, `vac/ cría`, `vac/cria`, `vaca/toro`.
+
+**Regla que salió de acá: el seed llena una canónica vacía, nunca cambia una que ya tiene valor.** Si el upsert pisara el mapeo, cada corrida borraría lo que una persona resolvió a mano, y «idempotente» y «lo resuelve una persona» se contradirían. La versión amplia protege también el caso de que alguien corrija uno de los 199: **el sistema nuevo es la fuente de verdad de acá en adelante, no WinCompras.**
+
+**Anotado para la pantalla de mapeo:** `va/c ria`, `vac/ cría` y `vac/cria` quedaron como tres filas distintas, y casi seguro son el mismo concepto. Unirlas es decisión de dominio, no de normalización. La pantalla tiene que dejar resolver varias juntas: resolver el mismo concepto tres veces se lee como un error del sistema.
+
+**Dependencias.** `tsx` entró (lo declara `prisma.config.ts`) y `@types/node` pasó de `^20` a `25.9.3`, porque el runtime local es Node 25 y `node:sqlite` no tiene tipos en 20. Para leer SQLite se usó `node:sqlite`, sin dependencias nuevas: el seed solo puede correr donde esté el archivo de WinCompras, nunca en Vercel.
+
+**El riesgo que eso deja abierto.** Los tipos de Node 25 en local contra el Node con que Vercel buildea es la misma clase de divergencia que venimos peleando toda la sesión: código que type-checkea acá y falla allá. Hay que mirar qué versión usa Vercel y fijarla con `engines.node`.
+
+**Y lo más grande que sigue sin probarse: nada se deployó desde el scaffold pelado.** `migrate deploy` en el build, el `postinstall`, el CA inline y el adapter contra el pooler solo corrieron en esta máquina. Es el próximo paso.
+
+---
+
+### 2026-08-25 · La regla del seed, cerrada; y el desfasaje de Node, confirmado
+
+**La regla ampliada, probada en las dos direcciones.** El seed rellena una canónica vacía y **nunca** cambia una que ya tiene valor. Se verificó corrompiendo `mej` a propósito: con la base diciendo VA y WinCompras diciendo TO, **gana la base** y la divergencia se reporta en pantalla en vez de aplicarse en silencio; con la canónica en NULL, la rellena. El sistema nuevo es la fuente de verdad de acá en adelante.
+
+**Node: confirmado contra la documentación de Vercel.** Las únicas versiones disponibles son **24.x (default), 22.x y 20.x**. Node 25 no existe como opción, así que la divergencia no era un riesgo sino un hecho: local corre 25 y Vercel iba a buildear con 24. Se fija `engines.node: "24.x"` y `@types/node` baja a `^24`.
+
+Dos cosas que salieron de leer la doc:
+- **`engines.node` pisa lo que diga el dashboard**, así que la versión queda determinística *y versionada en el repo*, sin depender de una config que alguien puede cambiar sin dejar rastro.
+- Los tipos tienen que coincidir con **el destino del deploy**, no con la máquina de desarrollo. Type-chequear contra APIs de Node 25 que no existen en 24 mueve el error a producción.
+
+El seed usa `node:sqlite`, que existe desde 22.5, así que sobrevive el bajón a 24 — y de todos modos nunca corre en Vercel.
+
+**Sigue sin verse el deploy.** El push se hizo (`fce1fbb..72bd402`), pero Claude Code no tiene manera de observar el build: el CLI de Vercel exige login interactivo, `gh` no está instalado y la API pública de GitHub devuelve 403 por rate limit. Lo que sí hizo fue correr **el comando exacto que corre Vercel** en local: `prisma migrate deploy && next build` pasa, encuentra `POSTGRES_URL_NON_POOLING` en el 5432, dice «No pending migrations to apply», y `/api/salud` compila como `ƒ` (dinámica), o sea que el `force-dynamic` quedó bien. Si falla en Vercel, no va a ser por el comando.
