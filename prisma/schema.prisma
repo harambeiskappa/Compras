@@ -152,16 +152,32 @@ model CategoriaSinonimo {
 // quién le quedan las cabezas. Lo normal es una sola empresa por compra; la
 // excepción es una empresa que compró poco y se cuelga de la compra de otra.
 //
-// Validación de aplicación, no constraint de base: al cerrar el módulo 2, la
-// empresa titular tiene que aparecer entre las empresas de las tropas de esa
-// compra. No puede ser un constraint porque en el módulo 1 todavía no hay
-// ninguna tropa contra la cual chequear. En el formulario, la empresa de cada
-// tropa viene precargada con la titular.
+// AVISO, no bloqueo: al cerrar el módulo 2, si la empresa titular no aparece
+// entre las empresas de las tropas, la app lo señala y una persona decide.
+// No lo impide.
+//
+// Por qué no bloquea: la empresa puede cambiar legítimamente entre la compra y
+// la liquidación — se define comprar para BUL y se termina liquidando a PEGSA,
+// que están muy vinculadas. Bloquearlo impediría un caso real. En el histórico
+// hay 9 compras así (ver docs/prueba-historico-modulos-1-2.md), y no son datos
+// mal cargados. Misma forma que los kilos faltantes: señalar, no bloquear.
+//
+// Tampoco podría ser un constraint de base aunque se quisiera: en el módulo 1
+// todavía no hay ninguna tropa contra la cual chequear.
+//
+// En el formulario, la empresa de cada tropa viene precargada con la titular.
 
 model Compra {
   id    Int      @id @default(autoincrement())
   fecha DateTime @db.Date
 
+  // NOT NULL a propósito: el consignatario SIEMPRE existe, también en la compra
+  // directa — no es sinónimo de feria.
+  //
+  // Para cuando se hagan las pantallas: este campo NO se puede rotular «Feria».
+  // Quien compra directo lo leería como que no le corresponde y lo dejaría
+  // vacío, que es justo el agujero que se está tapando. En el histórico hay 14
+  // compras sin consignatario (ver docs/prueba-historico-modulos-1-2.md).
   consignatarioId Int
   consignatario   Consignatario @relation(fields: [consignatarioId], references: [id])
 

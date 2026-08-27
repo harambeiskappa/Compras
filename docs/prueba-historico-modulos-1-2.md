@@ -55,19 +55,42 @@ empresas desde `catalogos_comprador` **con nombre placeholder**
 esperando a Iñaki y no se inventó), y consignatarios, vendedores y hoteleros
 desde los textos del histórico. Las categorías son las ya sembradas de verdad.
 
-## Discrepancia en el universo: 120, no 118
+## El universo: 120, y de dónde salían las 118
 
-El pedido decía 118 compras con `fecha_compra >= 2025-08-24`. **La consulta
-devuelve 120.** No encontré ningún filtro que dé 118:
+El pedido original decía 118 compras con `fecha_compra >= 2025-08-24`; la
+consulta devuelve **120**. Resuelto: el corte que da exactamente 118 es
+**`>= 2025-09-10`**. Las dos de diferencia son la **5390** (2025-09-05) y la
+**5510** (2025-09-09), las dos con `comprador = 'PEG'`, y las dos entraron sin
+problema.
 
-| corte | compras |
+No es, como se supuso primero, que el corte excluyera las 2 compras con
+`fecha_compra` en NULL: el predicado `fecha_compra >= '2025-08-24'` ya las
+excluye por sí solo, porque en SQL `NULL >= fecha` no es verdadero. Sumarlas
+daría 122, no 120:
+
+| consulta | compras |
 |---|---|
-| `>= 2025-08-22` | 122 |
-| `>= 2025-08-24` a `>= 2025-08-28` | **120** |
+| `fecha_compra >= '2025-08-24'` | **120** |
+| `fecha_compra IS NULL` (toda la tabla) | 2 |
+| `>= '2025-08-24' OR IS NULL` | 122 |
+| `fecha_compra >= '2025-09-10'` | 118 |
 
-`venta_directa` es `0` en las 120, no hay duplicados por `hash_archivo`, y
-ningún valor de `motivo` u `origen` recorta a 118. Se trabajó con las 120 y la
-diferencia queda anotada acá para resolverla.
+Se trabajó con las 120.
+
+### Las 2 compras sin fecha son categoría (a)
+
+Aunque caen fuera de la ventana por definición, corresponde anotarlas: hay 2
+compras en el histórico con `fecha_compra` en NULL, y **`Compra.fecha` es
+`NOT NULL`**, así que tampoco se podrían representar.
+
+| compra | archivo | lotes |
+|---|---|---|
+| 6284 | `Compra - venta hacienda Birolo.xlsx` | 1 |
+| 6285 | `compra Mondino (liag 12-04-14).xlsx` | 2 |
+
+Las dos tienen además `comprador` y `consignatario` vacíos, así que les faltan
+los tres campos obligatorios a la vez. Son (a): falta el dato, no es un
+problema del modelo.
 
 ## (a) Falta un dato que el formulario nuevo va a exigir — 58
 
@@ -149,15 +172,19 @@ identificadas.
 | 6316 | PEG | SAG |
 | 6319 | TAP | LTA |
 
-Estas nueve violan la validación del módulo 2 (la titular tiene que aparecer
-entre las empresas de las tropas de esa compra). No la violan «por poco»: la
-titular no figura en absoluto. Es distinto del caso legítimo de la regla de
-dominio, donde una empresa chica se cuelga de la compra de otra y **las dos**
-aparecen entre las tropas.
+En estas nueve la titular no figura entre las empresas de las tropas, y no «por
+poco»: no figura en absoluto.
 
-Importa que esa validación es de aplicación y no de base — por eso estas nueve
-entraron igual. Si el módulo 2 la aplica tal como está escrita, estos nueve
-casos históricos no se podrían cerrar sin corregir el dato o revisar la regla.
+**Resuelto: la validación baja de bloqueo a aviso.** No son datos mal cargados
+— la empresa puede cambiar legítimamente entre la compra y la liquidación: se
+define comprar para BUL y se termina liquidando a PEGSA, que están muy
+vinculadas. Bloquearlo impediría un caso real. La app señala la discrepancia y
+una persona decide si fue un cambio legítimo o un error; misma forma que ya se
+usa para los kilos faltantes. El comentario de `schema.prisma` quedó
+actualizado.
+
+Nada de esto toca la base: la validación siempre fue de aplicación, y por eso
+estas nueve entraron igual.
 
 ## Qué esta prueba NO ejercitó
 
@@ -181,5 +208,19 @@ El modelo aguanta el histórico. Lo que no entra, no entra por falta de dato en
 el origen, no por cómo está modelado — y las 53 compras sin empresa titular son
 la medida exacta del problema que la app viene a resolver.
 
-Quedan dos cosas para decidir, ninguna de las cuales toca el esquema: qué hacer
-con las 13 contradicciones del origen, y por qué el universo da 120 y no 118.
+Las dos cosas que quedaban abiertas ya se resolvieron, y ninguna tocó el
+esquema: las 9 compras con titular fuera de sus tropas se tratan con un **aviso
+y no un bloqueo**, porque la empresa puede cambiar legítimamente entre la compra
+y la liquidación; y las 118 del pedido original salían de un corte
+`>= 2025-09-10`, no de un filtro distinto.
+
+Queda una sola decisión pendiente: qué hacer con las 4 compras donde el texto y
+la conciliación no coinciden en cuántas tropas hay.
+
+## Volver a correrla
+
+`npx tsx scripts/prueba-historico.ts`
+
+Es seguro: corre dentro de una transacción que se aborta a propósito y no deja
+ni una fila. Conviene repetirla cada vez que se toque el esquema — sobre todo
+para ver si aparece algún caso (b), que es el único que obliga a frenar.
