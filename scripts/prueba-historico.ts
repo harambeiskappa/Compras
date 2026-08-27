@@ -22,6 +22,15 @@
  *
  * El informe de la última corrida está en docs/prueba-historico-modulos-1-2.md.
  *
+ * CUÁNDO CORRERLA: después de cada cambio de esquema **y después de cada cambio
+ * en prisma/seed.ts**. La prueba no es independiente del estado de los
+ * catálogos: reusa las empresas, los consignatarios y los sinónimos ya
+ * sembrados, y busca cada uno por su clave normalizada. Un cambio en el seed
+ * —una empresa nueva, otra forma de normalizar, un prefijo que se mueve— puede
+ * romperla o, peor, hacerla pasar midiendo otra cosa. Ya pasó una vez: cuando
+ * el seed empezó a cargar las 8 empresas de verdad, este script todavía creaba
+ * sus propios placeholders y chocaba contra el unique de prefijo_tropa.codigo.
+ *
  * Se insertan con SQL parametrizado y no con el cliente tipado a propósito: así
  * quien rechaza es Postgres (NOT NULL, FK compuestas, CHECK, unique) y no la
  * validación de Prisma en memoria, que es justo lo que la prueba quiere evitar.
@@ -36,6 +45,8 @@ import { DatabaseSync } from "node:sqlite";
 
 import { config as loadEnv } from "dotenv";
 
+import { normalizarNombre, normalizarTexto } from "@/lib/normalizar";
+
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
@@ -45,10 +56,6 @@ const DB_HISTORICA =
 
 const DESDE = process.env.PRUEBA_DESDE ?? "2025-08-24";
 
-/** Igual que en prisma/seed.ts. Tiene que coincidir o no encuentra el sinónimo. */
-function normalizar(texto: string): string {
-  return texto.trim().toLowerCase();
-}
 
 type Categoria = "a" | "b" | "c";
 
@@ -250,8 +257,10 @@ async function main() {
         )) {
           if (consignatarioId.has(nombre)) continue;
           const [row] = await tx.$queryRaw<{ id: number }[]>`
-            INSERT INTO consignatario (nombre, activo, "creadoEn", "actualizadoEn")
-            VALUES (${nombre}, true, now(), now()) RETURNING id
+            INSERT INTO consignatario (nombre, "nombreNormalizado", activo, "creadoEn", "actualizadoEn")
+            VALUES (${nombre}, ${normalizarNombre(nombre)}, true, now(), now())
+            ON CONFLICT ("nombreNormalizado") DO UPDATE SET nombre = consignatario.nombre
+            RETURNING id
           `;
           consignatarioId.set(nombre, row.id);
         }
@@ -261,8 +270,10 @@ async function main() {
           h.tropas.map((t) => t.proveedor.trim()).filter((s) => s !== "")
         )) {
           const [row] = await tx.$queryRaw<{ id: number }[]>`
-            INSERT INTO vendedor (nombre, activo, "creadoEn", "actualizadoEn")
-            VALUES (${nombre}, true, now(), now()) RETURNING id
+            INSERT INTO vendedor (nombre, "nombreNormalizado", activo, "creadoEn", "actualizadoEn")
+            VALUES (${nombre}, ${normalizarNombre(nombre)}, true, now(), now())
+            ON CONFLICT ("nombreNormalizado") DO UPDATE SET nombre = vendedor.nombre
+            RETURNING id
           `;
           vendedorId.set(nombre, row.id);
         }
@@ -272,8 +283,10 @@ async function main() {
           h.tropas.map((t) => t.hotelero.trim()).filter((s) => s !== "")
         )) {
           const [row] = await tx.$queryRaw<{ id: number }[]>`
-            INSERT INTO hotelero (nombre, activo, "creadoEn", "actualizadoEn")
-            VALUES (${nombre}, true, now(), now()) RETURNING id
+            INSERT INTO hotelero (nombre, "nombreNormalizado", activo, "creadoEn", "actualizadoEn")
+            VALUES (${nombre}, ${normalizarNombre(nombre)}, true, now(), now())
+            ON CONFLICT ("nombreNormalizado") DO UPDATE SET nombre = hotelero.nombre
+            RETURNING id
           `;
           hoteleroId.set(nombre, row.id);
         }
@@ -351,7 +364,7 @@ async function main() {
             // lotes
             for (const d of detallesPorCompra.get(liq.id) ?? []) {
               const sid = d.categoria_codigo
-                ? (sinonimoId.get(normalizar(d.categoria_codigo)) ?? null)
+                ? (sinonimoId.get(normalizarTexto(d.categoria_codigo)) ?? null)
                 : null;
               await tx.$executeRaw`
                 INSERT INTO lote (

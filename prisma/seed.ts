@@ -19,6 +19,8 @@ import { DatabaseSync } from "node:sqlite";
 
 import { config as loadEnv } from "dotenv";
 
+import { normalizarNombre, normalizarTexto } from "@/lib/normalizar";
+
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
@@ -26,21 +28,6 @@ const DB_HISTORICA =
   process.env.WINCOMPRAS_DB ??
   "c:/Users/zemma/Claude/Projects/WinCompras/backend/db.sqlite3";
 
-/**
- * Normalización canónica del texto de un sinónimo: trim + minúsculas.
- *
- * `toLowerCase()` de JS pliega Unicode, a diferencia de `lower()` de SQLite que
- * solo pliega ASCII. No es un detalle: en los datos, «vaca preñada» y
- * «VACA PREÑADA» colapsan en una sola fila acá y NO colapsarían con la
- * semántica de SQLite. Si algún día se compara contra un conteo sacado con SQL,
- * la diferencia es esa.
- *
- * Cualquier lugar que busque un sinónimo tiene que normalizar con esta misma
- * función antes de consultar, o no va a encontrar la fila.
- */
-export function normalizar(texto: string): string {
-  return texto.trim().toLowerCase();
-}
 
 /** Las 8 canónicas. MEJ no está: no es canónica, los datos ya la mapean a TO. */
 const CANONICAS: ReadonlyArray<{ codigo: string; descripcion: string }> = [
@@ -213,21 +200,32 @@ async function sembrar(prisma: Cliente) {
   }
 
   // ---------- 2. Consignatarios del histórico ----------
-  // `Consignatario.nombre` no tiene unique, así que la idempotencia es por
-  // búsqueda previa y no por upsert. Se compara por texto exacto ya trimmeado:
-  // en las 18 filas del histórico no hay ninguna colisión de mayúsculas, así
-  // que no hace falta inventar una regla de normalización.
+  // La identidad es `nombreNormalizado`, que lleva el unique: el upsert es
+  // idempotente por sí solo y dos textos que difieren solo en mayúsculas o
+  // acentos entran como UNA fila. `nombre` guarda el texto tal como vino y no
+  // se pisa en el update: puede haberse corregido a mano.
   const delHistorico = leerConsignatarios();
-  const consignatariosEnBase = new Set(
-    (await prisma.consignatario.findMany({ select: { nombre: true } })).map(
-      (c) => c.nombre
-    )
+  const yaEstaban = new Set(
+    (
+      await prisma.consignatario.findMany({ select: { nombreNormalizado: true } })
+    ).map((c) => c.nombreNormalizado)
   );
   let consignatariosCreados = 0;
+  let consignatariosColapsados = 0;
+  const vistos = new Set<string>();
   for (const nombre of delHistorico) {
-    if (consignatariosEnBase.has(nombre)) continue;
-    await prisma.consignatario.create({ data: { nombre } });
-    consignatariosEnBase.add(nombre);
+    const norm = normalizarNombre(nombre);
+    if (vistos.has(norm)) {
+      consignatariosColapsados++;
+      continue;
+    }
+    vistos.add(norm);
+    if (yaEstaban.has(norm)) continue;
+    await prisma.consignatario.upsert({
+      where: { nombreNormalizado: norm },
+      create: { nombre, nombreNormalizado: norm },
+      update: {},
+    });
     consignatariosCreados++;
   }
 
@@ -254,7 +252,7 @@ async function sembrar(prisma: Cliente) {
   >();
 
   for (const fila of crudas) {
-    const norm = normalizar(fila.codigo);
+    const norm = normalizarTexto(fila.codigo);
     const canonico = fila.canonico.trim();
     const grupo = grupos.get(norm);
 
@@ -366,6 +364,7 @@ async function sembrar(prisma: Cliente) {
   console.log(`  en la base        : ${consignatariosFinal}`);
   console.log(`  en el histórico   : ${delHistorico.length}`);
   console.log(`  creados ahora     : ${consignatariosCreados}`);
+  console.log(`  colapsados por normalizar: ${consignatariosColapsados}`);
 
   console.log("\n=== canónicas ===");
   console.log(`  en la base        : ${canonicas.length}`);

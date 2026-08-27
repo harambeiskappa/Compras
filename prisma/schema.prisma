@@ -56,9 +56,16 @@ model PrefijoTropa {
 }
 
 model Consignatario {
-  id     Int     @id @default(autoincrement())
-  nombre String
-  activo Boolean @default(true)
+  id                Int     @id @default(autoincrement())
+  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
+  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
+  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
+  // este catálogo se crea al vuelo desde un buscador del formulario, donde
+  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
+  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
+  nombre            String
+  nombreNormalizado String  @unique
+  activo            Boolean @default(true)
 
   compras Compra[]
 
@@ -69,9 +76,16 @@ model Consignatario {
 }
 
 model Vendedor {
-  id     Int     @id @default(autoincrement())
-  nombre String
-  activo Boolean @default(true)
+  id                Int     @id @default(autoincrement())
+  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
+  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
+  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
+  // este catálogo se crea al vuelo desde un buscador del formulario, donde
+  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
+  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
+  nombre            String
+  nombreNormalizado String  @unique
+  activo            Boolean @default(true)
 
   compras Compra[]
 
@@ -82,9 +96,16 @@ model Vendedor {
 }
 
 model Hotelero {
-  id     Int     @id @default(autoincrement())
-  nombre String
-  activo Boolean @default(true)
+  id                Int     @id @default(autoincrement())
+  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
+  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
+  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
+  // este catálogo se crea al vuelo desde un buscador del formulario, donde
+  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
+  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
+  nombre            String
+  nombreNormalizado String  @unique
+  activo            Boolean @default(true)
 
   compras Compra[]
 
@@ -96,9 +117,16 @@ model Hotelero {
 
 // Sin precedente histórico: no existe en ningún lado del sistema viejo.
 model PersonaCompradora {
-  id     Int     @id @default(autoincrement())
-  nombre String
-  activo Boolean @default(true)
+  id                Int     @id @default(autoincrement())
+  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
+  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
+  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
+  // este catálogo se crea al vuelo desde un buscador del formulario, donde
+  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
+  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
+  nombre            String
+  nombreNormalizado String  @unique
+  activo            Boolean @default(true)
 
   compras Compra[]
 
