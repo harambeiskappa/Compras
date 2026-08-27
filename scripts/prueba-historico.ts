@@ -63,7 +63,6 @@ type LiqRow = {
   fecha_compra: string | null;
   consignatario: string;
   comprador: string;
-  comision: number | null;
   observaciones: string;
   nro_tropa_texto: string;
   n_dte: string;
@@ -76,6 +75,7 @@ type DetalleRow = {
   cantidad_cabezas: number | null;
   peso_origen: number | null;
   precio_kg: number | null;
+  comision: number | null;
   categoria_codigo: string | null;
 };
 
@@ -103,7 +103,7 @@ function leerHistorico() {
   try {
     const liquidaciones = db
       .prepare(
-        `SELECT id, fecha_compra, consignatario, comprador, comision,
+        `SELECT id, fecha_compra, consignatario, comprador,
                 observaciones, nro_tropa_texto, n_dte, transportistas
          FROM liquidaciones_liquidacion
          WHERE fecha_compra >= ? ORDER BY id`
@@ -113,7 +113,7 @@ function leerHistorico() {
     const detalles = db
       .prepare(
         `SELECT d.id, d.liquidacion_id, d.cantidad_cabezas, d.peso_origen,
-                d.precio_kg, c.codigo AS categoria_codigo
+                d.precio_kg, d.comision, c.codigo AS categoria_codigo
          FROM liquidaciones_detalleliquidacion d
          JOIN liquidaciones_liquidacion l ON l.id = d.liquidacion_id
          LEFT JOIN catalogos_categoria c ON c.id = d.categoria_id
@@ -214,8 +214,20 @@ async function main() {
     await prisma.$transaction(
       async (tx) => {
         // ---------- catálogos ----------
+        // Empresas y consignatarios YA ESTÁN SEMBRADOS de verdad (prisma/seed.ts):
+        // se reusan, no se recrean. Recrearlos chocaría contra el unique de
+        // `prefijo_tropa.codigo`, y además la prueba es más fiel si corre contra
+        // los mismos catálogos que va a usar la app.
         const empresaId = new Map<string, number>();
+        const prefijos = await tx.prefijoTropa.findMany({
+          select: { codigo: true, empresaId: true },
+        });
+        for (const p of prefijos) empresaId.set(p.codigo, p.empresaId);
+
+        // Si algún prefijo del histórico todavía no estuviera sembrado, se crea
+        // acá dentro con nombre placeholder: la razón social real no se inventa.
         for (const c of h.compradores) {
+          if (empresaId.has(c.codigo)) continue;
           const [row] = await tx.$queryRaw<{ id: number }[]>`
             INSERT INTO empresa (nombre, "esPropio", activo, "creadoEn", "actualizadoEn")
             VALUES (${`(pendiente razón social) ${c.codigo}`}, ${c.propio === 1}, true, now(), now())
@@ -228,9 +240,15 @@ async function main() {
         }
 
         const consignatarioId = new Map<string, number>();
+        for (const c of await tx.consignatario.findMany({
+          select: { id: true, nombre: true },
+        })) {
+          consignatarioId.set(c.nombre, c.id);
+        }
         for (const nombre of new Set(
           h.liquidaciones.map((l) => l.consignatario.trim()).filter((s) => s !== "")
         )) {
+          if (consignatarioId.has(nombre)) continue;
           const [row] = await tx.$queryRaw<{ id: number }[]>`
             INSERT INTO consignatario (nombre, activo, "creadoEn", "actualizadoEn")
             VALUES (${nombre}, true, now(), now()) RETURNING id
@@ -289,10 +307,10 @@ async function main() {
             const [compra] = await tx.$queryRaw<{ id: number }[]>`
               INSERT INTO compra (
                 fecha, "consignatarioId", "empresaTitularId", "vendedorId",
-                "hoteleroId", comision, observaciones, "creadoEn", "actualizadoEn"
+                "hoteleroId", observaciones, "creadoEn", "actualizadoEn"
               ) VALUES (
                 ${liq.fecha_compra}::date, ${cons}, ${emp}, ${vend},
-                ${hot}, ${liq.comision}, ${liq.observaciones}, now(), now()
+                ${hot}, ${liq.observaciones}, now(), now()
               ) RETURNING id
             `;
 
@@ -338,10 +356,10 @@ async function main() {
               await tx.$executeRaw`
                 INSERT INTO lote (
                   "compraId", "tropaId", "categoriaSinonimoId", cabezas,
-                  "kilosOrigen", precio, "creadoEn", "actualizadoEn"
+                  "kilosOrigen", precio, comision, "creadoEn", "actualizadoEn"
                 ) VALUES (
                   ${compra.id}, NULL, ${sid}, ${d.cantidad_cabezas},
-                  ${d.peso_origen}, ${d.precio_kg}, now(), now()
+                  ${d.peso_origen}, ${d.precio_kg}, ${d.comision}, now(), now()
                 )
               `;
               lotesInsertados++;

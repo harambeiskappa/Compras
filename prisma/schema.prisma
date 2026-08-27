@@ -197,9 +197,8 @@ model Compra {
 
   plazaLugar String?
 
-  comision          Decimal?           @db.Decimal(14, 2)
-  comisionModalidad ModalidadComision?
-
+  // La comisión NO vive acá: se aplica por renglón, no por compra. Está en
+  // `Lote.comision` — ver la nota ahí sobre por qué el total no se guarda.
   observaciones String?
 
   tropas   Tropa[]
@@ -322,6 +321,28 @@ model Lote {
 
   precio          Decimal?         @db.Decimal(14, 2)
   modalidadPrecio ModalidadPrecio?
+
+  // La comisión se pacta y se aplica POR RENGLÓN, no por compra. Medido sobre
+  // el último año: en la mayoría de las compras multi-renglón el porcentaje es
+  // el mismo en todos, pero en varias difiere de verdad (5946: 3 % y 4 %;
+  // 6314 y 6321: 2 % y 3 %) y sigue al destino del lote — feedlot 2 %, campo
+  // 3 %. Guardarla en la compra hacía imposible representar esos casos.
+  //
+  // NO EXISTE, NI DEBE EXISTIR, UNA COLUMNA DE COMISIÓN TOTAL EN `Compra`.
+  // El total de comisión de una compra se CALCULA sumando el de sus lotes.
+  // Guardarlo sería un total almacenado, que es lo que prohíbe la regla 2 («un
+  // concepto, un lugar»). El esquema viejo lo hacía —
+  // `liquidaciones_liquidacion.comision` es literalmente la suma de sus
+  // renglones: la compra 5325 guarda 5.168.904, que es exactamente
+  // 2.275.896 + 1.443.256 + 1.286.600 + 163.152 — y era una de las columnas
+  // derivadas que le criticamos. No repetirlo por comodidad.
+  //
+  // Nullable: en el momento del módulo 2 la comisión puede no estar acordada
+  // todavía; se conoce al liquidar (módulo 3). Y hay renglones legítimos con
+  // comisión cero (compras 5721 y 6299), que es un valor, no un faltante.
+  comision          Decimal?           @db.Decimal(14, 2)
+  // Acompaña a `comision`: si el monto es s/d, la modalidad también puede serlo.
+  comisionModalidad ModalidadComision?
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
