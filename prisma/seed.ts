@@ -1,12 +1,16 @@
 /**
- * Seed de categorías y sinónimos.
+ * Seed de catálogos: categorías, sinónimos, empresas y consignatarios.
  *
- * Alcance: SOLO `Categoria` y `CategoriaSinonimo`. Las empresas quedan afuera
- * porque necesitan un dato que no está en la base histórica.
+ * Fuentes:
+ *   - categorías y sinónimos -> `catalogos_categoria` de WinCompras (258 filas)
+ *   - empresas               -> escritas acá, ver EMPRESAS
+ *   - consignatarios         -> `liquidaciones_liquidacion.consignatario`
+ * La base histórica se abre en modo solo lectura: este script nunca le escribe.
  *
- * Fuente: la base de WinCompras (`backend/db.sqlite3`), tabla
- * `catalogos_categoria` — 258 filas con `codigo`, `descripcion` y `canonico`.
- * Se abre en modo solo lectura: este script nunca escribe en la histórica.
+ * Disciplina común a todo el archivo: **rellena lo vacío, nunca pisa lo que ya
+ * tiene valor.** El sistema nuevo es la fuente de verdad de acá en adelante, no
+ * WinCompras, así que una corrección hecha a mano sobrevive a correr el seed de
+ * nuevo. Todo es idempotente.
  *
  * Correrlo:  npx prisma db seed        (o: npx tsx prisma/seed.ts)
  * La ruta de la base se puede pisar con la variable WINCOMPRAS_DB.
@@ -50,6 +54,35 @@ const CANONICAS: ReadonlyArray<{ codigo: string; descripcion: string }> = [
   { codigo: "T", descripcion: "ternero/a mixto" },
 ];
 
+/**
+ * Las 8 empresas y sus 11 prefijos de tropa. Dos empresas tienen más de uno,
+ * que es exactamente por lo que `PrefijoTropa` es una tabla aparte y no una
+ * columna de `Empresa`.
+ *
+ * La identidad de una empresa acá es el **código de prefijo**, no el nombre:
+ * `PrefijoTropa.codigo` es la única columna con unique, y el nombre puede
+ * editarse a mano sin que el seed lo pise.
+ *
+ * TRB cierra la decisión #10: es de terceros (`esPropio = false`). No se
+ * analizan sus compras, pero su hacienda puede entrar al feedlot o a campos
+ * adyacentes y hay que contabilizar su stock. Su rol real es hotelero, no
+ * empresa compradora — que es un rol distinto, no un matiz del mismo.
+ */
+const EMPRESAS: ReadonlyArray<{
+  nombre: string;
+  esPropio: boolean;
+  prefijos: string[];
+}> = [
+  { nombre: "Pecuaria El Garabí", esPropio: true, prefijos: ["PEG", "PEC"] },
+  { nombre: "Las Taperas del Oeste", esPropio: true, prefijos: ["TAP", "LTA", "LTP"] },
+  { nombre: "Bulltrade", esPropio: true, prefijos: ["BUL"] },
+  { nombre: "Darwash", esPropio: true, prefijos: ["DAR"] },
+  { nombre: "Martín y Alonso", esPropio: true, prefijos: ["ALO"] },
+  { nombre: "Unión Ganadera", esPropio: true, prefijos: ["UGM"] },
+  { nombre: "El Saguaipe", esPropio: true, prefijos: ["SAG"] },
+  { nombre: "Tercio Bravo", esPropio: false, prefijos: ["TRB"] },
+];
+
 type FilaHistorica = {
   id: number;
   codigo: string;
@@ -62,6 +95,34 @@ function leerHistoricas(): FilaHistorica[] {
     return db
       .prepare("SELECT id, codigo, canonico FROM catalogos_categoria ORDER BY id")
       .all() as FilaHistorica[];
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Consignatarios del histórico.
+ *
+ * Sale SOLO de `liquidaciones_liquidacion.consignatario`, que es el campo que
+ * corresponde a `Compra.consignatarioId`. `ingresos_tropa.consignatario`
+ * queda deliberadamente afuera: guarda las mismas entidades escritas distinto
+ * («Darwash» vs «DARWASH SA», «Talano Hnos» vs «TALANO HERMANOS SRL»), más
+ * valores que no son consignatarios en absoluto («TRASLADO», «DESTETE») y
+ * empresas nuestras. Unificar las dos listas exige decidir qué texto
+ * representa a qué entidad real, y eso no se adivina.
+ */
+function leerConsignatarios(): string[] {
+  const db = new DatabaseSync(DB_HISTORICA, { readOnly: true });
+  try {
+    const filas = db
+      .prepare(
+        `SELECT DISTINCT trim(consignatario) AS nombre
+         FROM liquidaciones_liquidacion
+         WHERE trim(coalesce(consignatario,'')) <> ''
+         ORDER BY nombre`
+      )
+      .all() as unknown as { nombre: string }[];
+    return filas.map((f) => f.nombre);
   } finally {
     db.close();
   }
@@ -83,7 +144,94 @@ async function main() {
 type Cliente = Awaited<typeof import("@/lib/prisma")>["prisma"];
 
 async function sembrar(prisma: Cliente) {
-  // ---------- 1. Las 8 canónicas ----------
+  // ---------- 1. Las 8 empresas y sus 11 prefijos ----------
+  const prefijosEnBase = await prisma.prefijoTropa.findMany({
+    select: { codigo: true, empresaId: true },
+  });
+  const empresaPorPrefijo = new Map(
+    prefijosEnBase.map((p) => [p.codigo, p.empresaId])
+  );
+
+  let empresasCreadas = 0;
+  let empresasYaEstaban = 0;
+  let prefijosCreados = 0;
+  let esPropioRellenado = 0;
+  let esPropioPreservado = 0;
+  const conflictos: string[] = [];
+
+  for (const def of EMPRESAS) {
+    const ids = new Set(
+      def.prefijos
+        .map((p) => empresaPorPrefijo.get(p))
+        .filter((x): x is number => x !== undefined)
+    );
+
+    if (ids.size > 1) {
+      // Alguien separó los prefijos de una misma empresa. Podría ser
+      // deliberado; unificarlos sería pisar esa decisión. Se reporta y se salta.
+      conflictos.push(
+        `${def.nombre}: sus prefijos (${def.prefijos.join(", ")}) apuntan a ` +
+          `${ids.size} empresas distintas (ids ${[...ids].join(", ")}) — ` +
+          `no se toca, resolvelo a mano`
+      );
+      continue;
+    }
+
+    let empresaId: number;
+
+    if (ids.size === 1) {
+      empresaId = [...ids][0];
+      empresasYaEstaban++;
+      // El nombre NO se toca nunca: puede haberse editado a mano.
+      const actual = await prisma.empresa.findUniqueOrThrow({
+        where: { id: empresaId },
+        select: { esPropio: true },
+      });
+      if (actual.esPropio === null) {
+        await prisma.empresa.update({
+          where: { id: empresaId },
+          data: { esPropio: def.esPropio },
+        });
+        esPropioRellenado++;
+      } else {
+        esPropioPreservado++;
+      }
+    } else {
+      const nueva = await prisma.empresa.create({
+        data: { nombre: def.nombre, esPropio: def.esPropio },
+      });
+      empresaId = nueva.id;
+      empresasCreadas++;
+    }
+
+    for (const codigo of def.prefijos) {
+      if (empresaPorPrefijo.has(codigo)) continue;
+      await prisma.prefijoTropa.create({ data: { codigo, empresaId } });
+      empresaPorPrefijo.set(codigo, empresaId);
+      prefijosCreados++;
+    }
+  }
+
+  // ---------- 2. Consignatarios del histórico ----------
+  // `Consignatario.nombre` no tiene unique, así que la idempotencia es por
+  // búsqueda previa y no por upsert. Se compara por texto exacto ya trimmeado:
+  // en las 18 filas del histórico no hay ninguna colisión de mayúsculas, así
+  // que no hace falta inventar una regla de normalización.
+  const delHistorico = leerConsignatarios();
+  const consignatariosEnBase = new Set(
+    (await prisma.consignatario.findMany({ select: { nombre: true } })).map(
+      (c) => c.nombre
+    )
+  );
+  let consignatariosCreados = 0;
+  for (const nombre of delHistorico) {
+    if (consignatariosEnBase.has(nombre)) continue;
+    await prisma.consignatario.create({ data: { nombre } });
+    consignatariosEnBase.add(nombre);
+    consignatariosCreados++;
+  }
+
+  // ---------- 3. Las 8 canónicas ----------
   for (const c of CANONICAS) {
     await prisma.categoria.upsert({
       where: { codigo: c.codigo },
@@ -95,7 +243,7 @@ async function sembrar(prisma: Cliente) {
   const canonicas = await prisma.categoria.findMany();
   const idPorCodigo = new Map(canonicas.map((c) => [c.codigo, c.id]));
 
-  // ---------- 2. Los sinónimos ----------
+  // ---------- 4. Los sinónimos ----------
   const crudas = leerHistoricas();
 
   // Dedup por textoNormalizado. Se conserva la variante cruda de menor id (la
@@ -198,8 +346,28 @@ async function sembrar(prisma: Cliente) {
     });
   }
 
-  // ---------- 3. Reporte ----------
-  console.log("=== canónicas ===");
+  // ---------- 5. Reporte ----------
+  const empresasFinal = await prisma.empresa.count();
+  const prefijosFinal = await prisma.prefijoTropa.count();
+  const consignatariosFinal = await prisma.consignatario.count();
+
+  console.log("=== empresas ===");
+  console.log(`  en la base        : ${empresasFinal}   (prefijos: ${prefijosFinal})`);
+  console.log(`  creadas ahora     : ${empresasCreadas}`);
+  console.log(`  ya estaban        : ${empresasYaEstaban}`);
+  console.log(`  prefijos creados  : ${prefijosCreados}`);
+  console.log(`  esPropio rellenado / preservado: ${esPropioRellenado} / ${esPropioPreservado}`);
+  if (conflictos.length) {
+    console.log(`\n  OJO: ${conflictos.length} conflicto(s) de prefijos, sin tocar:`);
+    for (const c of conflictos) console.log(`    ${c}`);
+  }
+
+  console.log("\n=== consignatarios ===");
+  console.log(`  en la base        : ${consignatariosFinal}`);
+  console.log(`  en el histórico   : ${delHistorico.length}`);
+  console.log(`  creados ahora     : ${consignatariosCreados}`);
+
+  console.log("\n=== canónicas ===");
   console.log(`  en la base        : ${canonicas.length}`);
 
   console.log("\n=== sinónimos ===");
