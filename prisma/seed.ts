@@ -82,6 +82,26 @@ const EMPRESAS: ReadonlyArray<{
  * así que Pecuaria El Garabí termina con EMPRESA_COMPRADORA, HOTELERO y
  * VENDEDOR. `esPropio` sale de EMPRESAS y no lo pisa el alias.
  *
+ * LA CONVENCIÓN QUE EXPLICA CASI TODOS. La feria aparece con su NOMBRE CORTO
+ * cuando consigna y con su RAZÓN SOCIAL COMPLETA cuando es el origen:
+ * «Ferialvarez» consignando y «FERIALVAREZ S.A» vendiendo; «Orella» y
+ * «ORELLA SRL»; «Vicar Ganadera» y «VICAR GANADERA SA». No es ruido de carga,
+ * es un patrón del sistema viejo, y va a seguir generando pares nuevos a medida
+ * que entren datos. Quien vea aparecer otro par con esa forma ya sabe qué está
+ * mirando: no es un duplicado por descuido, es la misma feria en sus dos
+ * papeles.
+ *
+ * La excepción es «FERIA RODEO HUINCA S.R.L.» contra «FERIA RODEO HUINCA
+ * S.R.L», que difieren en un punto final y son el mismo texto tipeado dos
+ * veces.
+ *
+ * NINGUNO SE FUSIONA POR NORMALIZACIÓN AUTOMÁTICA, y es deliberado. Recortar
+ * sufijos societarios obligaría a adivinar si dos textos son la misma entidad
+ * —«Martín y Alonso» la empresa nuestra y «MARTIN Y ALONSO SRL» la feria
+ * podrían no serlo—, y eso lo decide una persona. La detección de parecidos
+ * SEÑALA; esta lista REGISTRA lo que alguien confirmó. Es la misma división de
+ * trabajo que en la pantalla: la app avisa, la persona resuelve.
+ *
  * Esto es lo único que fusiona nombres distintos. El resto sigue la regla:
  * solo colapsa lo que el nombreNormalizado ESTRICTO ya considera igual.
  *
@@ -101,6 +121,18 @@ const ALIAS_ENTIDAD: ReadonlyArray<{ enElHistorico: string; quedaComo: string }>
   { enElHistorico: "EL SAGUAIPE SAS", quedaComo: "El Saguaipe" },
   { enElHistorico: "UGMA", quedaComo: "Unión Ganadera" },
   { enElHistorico: "TERCIO BRAVO SAS", quedaComo: "Tercio Bravo" },
+
+  // Nombre corto consignando vs. razón social completa como origen.
+  { enElHistorico: "FERIALVAREZ S.A", quedaComo: "Ferialvarez" },
+  { enElHistorico: "BRESSAN Y CIA SRL", quedaComo: "Bressan y Cia" },
+  { enElHistorico: "FERIAS MARK HNOS SRL", quedaComo: "Ferias Mark Hnos" },
+  { enElHistorico: "ORELLA SRL", quedaComo: "Orella" },
+  { enElHistorico: "VICAR GANADERA SA", quedaComo: "Vicar Ganadera" },
+  { enElHistorico: "Martin y Alonso SRL", quedaComo: "Martín y Alonso" },
+  { enElHistorico: "PECUARIA EL GARABI SA", quedaComo: "Pecuaria El Garabí" },
+
+  // El mismo texto tipeado dos veces; cambia solo el punto final.
+  { enElHistorico: "FERIA RODEO HUINCA S.R.L.", quedaComo: "FERIA RODEO HUINCA S.R.L" },
 ];
 
 type Rol =
