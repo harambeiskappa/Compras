@@ -70,6 +70,39 @@ const EMPRESAS: ReadonlyArray<{
   { nombre: "Tercio Bravo", esPropio: false, prefijos: ["TRB"] },
 ];
 
+
+/**
+ * Nombres del histórico que son la MISMA entidad que una de nuestras empresas,
+ * escritos distinto. Confirmados uno por uno por Iñaki el 28/08/2026 — no se
+ * dedujeron.
+ *
+ * La clave es cómo aparece en el histórico (casi siempre en la columna de
+ * hotelero); el valor es el nombre que queda. La entidad resultante conserva
+ * TODOS los roles que aportaban las dos: PEGSA aportaba HOTELERO y VENDEDOR,
+ * así que Pecuaria El Garabí termina con EMPRESA_COMPRADORA, HOTELERO y
+ * VENDEDOR. `esPropio` sale de EMPRESAS y no lo pisa el alias.
+ *
+ * Esto es lo único que fusiona nombres distintos. El resto sigue la regla:
+ * solo colapsa lo que el nombreNormalizado ESTRICTO ya considera igual.
+ *
+ * LO QUE NO SE FUSIONA, Y POR QUÉ. «PECUARIA DESCANSO», «PECUARIA EL
+ * COLORADITO» y «PECUARIA DON PEDRO» quedan como entidades propias. EL DESCANSO
+ * y EL COLORADITO son CAMPOS de Pecuaria El Garabí, no empresas, y los dos
+ * aparecen también en el catálogo de destinos: el sistema viejo mezclaba en la
+ * columna de hotelero dos cosas distintas —de quién es la hacienda, y en qué
+ * campo está físicamente—. Eso se resuelve en el módulo 2, cuando se toque el
+ * destino, no acá. De Don Pedro no se sabe nada.
+ */
+const ALIAS_ENTIDAD: ReadonlyArray<{ enElHistorico: string; quedaComo: string }> = [
+  { enElHistorico: "PEGSA", quedaComo: "Pecuaria El Garabí" },
+  { enElHistorico: "LAS TAPERAS", quedaComo: "Las Taperas del Oeste" },
+  { enElHistorico: "DARWASH SA", quedaComo: "Darwash" },
+  { enElHistorico: "BULLTRADE SRL", quedaComo: "Bulltrade" },
+  { enElHistorico: "EL SAGUAIPE SAS", quedaComo: "El Saguaipe" },
+  { enElHistorico: "UGMA", quedaComo: "Unión Ganadera" },
+  { enElHistorico: "TERCIO BRAVO SAS", quedaComo: "Tercio Bravo" },
+];
+
 type Rol =
   | "CONSIGNATARIO"
   | "EMPRESA_COMPRADORA"
@@ -167,20 +200,45 @@ async function sembrar(prisma: Cliente) {
 
   // Agrupar por nombre normalizado. Se conserva la primera variante cruda vista
   // como `nombre`; el resto queda registrado para poder reportar qué colapsó.
+  // Alias -> nombre que queda, indexado por el normalizado del texto histórico.
+  const aliasPorNorm = new Map(
+    ALIAS_ENTIDAD.map((a) => [normalizarNombre(a.enElHistorico), a])
+  );
+  const fusionesPorAlias = new Map<string, { desde: Set<string>; roles: Set<Rol> }>();
+
   type Grupo = { nombre: string; variantes: Set<string>; roles: Set<Rol> };
   const grupoPorNorm = new Map<string, Grupo>();
   for (const c of candidatos) {
-    const norm = normalizarNombre(c.nombre);
+    const alias = aliasPorNorm.get(normalizarNombre(c.nombre));
+    if (alias) {
+      let f = fusionesPorAlias.get(alias.quedaComo);
+      if (!f) {
+        f = { desde: new Set(), roles: new Set() };
+        fusionesPorAlias.set(alias.quedaComo, f);
+      }
+      f.desde.add(c.nombre);
+      f.roles.add(c.rol);
+    }
+    const nombreFinal = alias ? alias.quedaComo : c.nombre;
+    const norm = normalizarNombre(nombreFinal);
     let g = grupoPorNorm.get(norm);
     if (!g) {
-      g = { nombre: c.nombre, variantes: new Set(), roles: new Set() };
+      g = { nombre: nombreFinal, variantes: new Set(), roles: new Set() };
       grupoPorNorm.set(norm, g);
     }
+    // Se registra la variante CRUDA aunque el alias la haya renombrado: así el
+    // reporte muestra de dónde salió cada cosa.
     g.variantes.add(c.nombre);
     g.roles.add(c.rol);
   }
 
+  const normFusionados = new Set(
+    [...fusionesPorAlias.keys()].map((n) => normalizarNombre(n))
+  );
+  // Los fusionados por alias se reportan aparte: son una decisión humana
+  // declarada, no el resultado mecánico de normalizar.
   const colapsos = [...grupoPorNorm.entries()]
+    .filter(([norm, g]) => !normFusionados.has(norm))
     .filter(([, g]) => g.variantes.size > 1 || g.roles.size > 1)
     .map(([norm, g]) => ({
       norm,
@@ -405,6 +463,14 @@ async function sembrar(prisma: Cliente) {
   console.log(`  declarados en total: ${rolesFinal}`);
   for (const r of [...porRol].sort((a, b) => b._count.rol - a._count.rol)) {
     console.log(`    ${r.rol.padEnd(20)} ${r._count.rol}`);
+  }
+
+  console.log(`\n=== fusionadas por alias confirmado: ${fusionesPorAlias.size} ===`);
+  console.log("  Nombres distintos que Iñaki confirmó que son la misma entidad.");
+  console.log("  Es lo único que fusiona textos que no coinciden al normalizar.");
+  for (const [quedaComo, f] of fusionesPorAlias) {
+    console.log(`    ${[...f.desde].join(", ")}  ->  ${quedaComo}`);
+    console.log(`       aporta roles: ${[...f.roles].sort().join(", ")}`);
   }
 
   console.log(`\n=== colapsaron en una sola entidad: ${colapsos.length} ===`);

@@ -20,6 +20,19 @@
  *   (b) el dato existe pero el modelo no lo puede representar  <- lo que importa
  *   (c) el origen es contradictorio
  *
+ * CUÁNDO APRUEBA. Dos condiciones, y ninguna es un número:
+ *   1. (b) es CERO.
+ *   2. Todo fallo de (a) y (c) cae en un motivo ya catalogado.
+ *
+ * Los conteos se IMPRIMEN pero no deciden nada. La base de WinCompras es un
+ * pipeline vivo que re-ingesta: el 28/08/2026 pasó de 1049 a 1051 filas y la
+ * ventana de 120 a 121 compras sin que cambiara una línea de código. Un
+ * criterio numérico habría marcado eso como falla, y una prueba que grita por
+ * cada ingesta deja de mirarse en tres semanas.
+ *
+ * Al revés: un motivo NUEVO la hace fallar aunque los totales queden idénticos.
+ * Esa es la señal que importa — que aparezca una razón que nadie miró.
+ *
  * El informe de la última corrida está en docs/prueba-historico-modulos-1-2.md.
  *
  * CUÁNDO CORRERLA: después de cada cambio de esquema **y después de cada cambio
@@ -41,6 +54,7 @@
  * Corre por la conexión DIRECTA (session mode): es una transacción larga, y el
  * pooler en transaction mode no es el lugar para eso.
  */
+import { statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 import { config as loadEnv } from "dotenv";
@@ -59,10 +73,37 @@ const DESDE = process.env.PRUEBA_DESDE ?? "2025-08-24";
 
 type Categoria = "a" | "b" | "c";
 
+/**
+ * CATÁLOGO DE MOTIVOS CONOCIDOS.
+ *
+ * La prueba aprueba si (b) es cero Y todo fallo cae en uno de estos. Un motivo
+ * NUEVO la hace fallar aunque los totales no se muevan — que es el punto: lo
+ * que importa no es cuántas quedan afuera, sino que no aparezca una razón que
+ * nadie miró todavía.
+ *
+ * Agregar una entrada acá es una decisión: significa «esto ya lo miramos y
+ * sabemos por qué pasa». No se agrega para que la prueba deje de molestar.
+ */
+const MOTIVOS_CONOCIDOS = {
+  FALTA_EMPRESA_TITULAR: "el origen no tiene empresa titular y la columna es NOT NULL",
+  FALTA_CONSIGNATARIO: "el origen no tiene consignatario y la columna es NOT NULL",
+  FALTA_FECHA: "el origen no tiene fecha de compra y la columna es NOT NULL",
+  LOTE_SIN_CATEGORIA: "algún lote del origen no tiene categoría",
+  TROPA_SIN_EMPRESA: "alguna tropa del origen no tiene empresa compradora",
+  TITULAR_FUERA_DE_SUS_TROPAS:
+    "la empresa titular no figura entre las de sus tropas — legítimo, la empresa puede cambiar entre compra y liquidación",
+  TROPAS_TEXTO_VS_CONCILIACION:
+    "el texto y la conciliación no coinciden en cuántas tropas tiene la compra",
+} as const;
+
+type MotivoConocido = keyof typeof MOTIVOS_CONOCIDOS;
+
 type Fallo = {
   compraId: number;
   categoria: Categoria;
-  motivo: string;
+  /** Vacío = motivo NO catalogado. Eso hace fallar la prueba. */
+  motivos: MotivoConocido[];
+  detalle: string;
 };
 
 type LiqRow = {
@@ -159,7 +200,11 @@ function leerHistorico() {
       .prepare(`SELECT codigo, propio FROM catalogos_comprador ORDER BY id`)
       .all() as unknown as { codigo: string; propio: number }[];
 
-    return { liquidaciones, detalles, tropas, dtes, compradores };
+    const totalLiquidaciones = (
+      db.prepare("SELECT count(*) AS n FROM liquidaciones_liquidacion").get() as unknown as { n: number }
+    ).n;
+
+    return { liquidaciones, detalles, tropas, dtes, compradores, totalLiquidaciones };
   } finally {
     db.close();
   }
@@ -211,7 +256,7 @@ async function main() {
   }
 
   const fallos: Fallo[] = [];
-  const observaciones: string[] = [];
+  const contradicciones: Fallo[] = [];
   let entraron = 0;
   let lotesInsertados = 0;
   let tropasInsertadas = 0;
@@ -400,7 +445,10 @@ async function main() {
           }
         }
 
-        // ---------- observaciones que NO son fallos de inserción ----------
+        // ---------- contradicciones del origen: categoría (c) ----------
+        // No impiden la inserción, pero son fallos igual: hay algo que decidir.
+        // Se catalogan como todo lo demás, así que una contradicción de un tipo
+        // NUEVO hace fallar la prueba aunque los totales no se muevan.
         for (const liq of h.liquidaciones) {
           const tropas = tropasPorCompra.get(liq.id) ?? [];
           if (tropas.length === 0) continue;
@@ -412,21 +460,26 @@ async function main() {
             empresasTropas.size > 0 &&
             !empresasTropas.has(liq.comprador.trim())
           ) {
-            observaciones.push(
-              `compra ${liq.id}: titular ${liq.comprador.trim()} no está entre las ` +
-                `empresas de sus tropas (${[...empresasTropas].join(", ")}) — ` +
-                `viola la validación del módulo 2, que es de aplicación y no de base`
-            );
+            contradicciones.push({
+              compraId: liq.id,
+              categoria: "c",
+              motivos: ["TITULAR_FUERA_DE_SUS_TROPAS"],
+              detalle:
+                `titular ${liq.comprador.trim()} no está entre las empresas de ` +
+                `sus tropas (${[...empresasTropas].join(", ")})`,
+            });
           }
           const enTexto = liq.nro_tropa_texto
             .split(";")
             .map((s) => s.trim())
             .filter((s) => s !== "").length;
           if (enTexto > 0 && enTexto !== tropas.length) {
-            observaciones.push(
-              `compra ${liq.id}: el texto menciona ${enTexto} tropa(s) y la ` +
-                `conciliación linkea ${tropas.length} — origen contradictorio`
-            );
+            contradicciones.push({
+              compraId: liq.id,
+              categoria: "c",
+              motivos: ["TROPAS_TEXTO_VS_CONCILIACION"],
+              detalle: `el texto menciona ${enTexto} tropa(s) y la conciliación linkea ${tropas.length}`,
+            });
           }
         }
 
@@ -440,13 +493,46 @@ async function main() {
     await prisma.$disconnect();
   }
 
-  reportar(h, fallos, observaciones, {
+  const aprobada = reportar(h, fallos, contradicciones, {
     entraron,
     lotesInsertados,
     tropasInsertadas,
     cargasInsertadas,
   });
+
+  // El código de salida es el veredicto: si no, correrla desde un script diría
+  // que aprobó siempre.
+  if (!aprobada) process.exitCode = 1;
 }
+
+/**
+ * Código SQLSTATE que devolvió Postgres, sacado del mensaje de Prisma
+ * («Raw query failed. Code: `23502`»). null si no se pudo leer.
+ */
+/** Primera línea con contenido del error: el mensaje de Prisma arranca con
+ * saltos de línea y `split(...)[0]` devolvía vacío. */
+function primeraLinea(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return (
+    msg
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l !== "") ?? "sin mensaje"
+  );
+}
+
+function codigoPg(e: unknown): string | null {
+  const msg = e instanceof Error ? e.message : String(e);
+  const m = msg.match(/Code: `(\d+)`/);
+  return m ? m[1] : null;
+}
+
+/**
+ * 23502 = not_null_violation. Es el único error que explican los motivos de
+ * falta de dato: si el origen no trae empresa titular, lo que tiene que romper
+ * es el NOT NULL de esa columna y nada más.
+ */
+const NOT_NULL = "23502";
 
 function clasificar(
   liq: LiqRow,
@@ -455,81 +541,179 @@ function clasificar(
   tropas: Map<number, TropaRow[]>
 ): Fallo {
   const msg = e instanceof Error ? e.message : String(e);
-  const faltantes: string[] = [];
-  if (vacio(liq.comprador)) faltantes.push("empresa titular");
-  if (vacio(liq.consignatario)) faltantes.push("consignatario");
-  if (!liq.fecha_compra) faltantes.push("fecha de compra");
+  const motivos: MotivoConocido[] = [];
+  const partes: string[] = [];
 
-  if (faltantes.length) {
+  if (vacio(liq.comprador)) {
+    motivos.push("FALTA_EMPRESA_TITULAR");
+    partes.push("empresa titular");
+  }
+  if (vacio(liq.consignatario)) {
+    motivos.push("FALTA_CONSIGNATARIO");
+    partes.push("consignatario");
+  }
+  if (!liq.fecha_compra) {
+    motivos.push("FALTA_FECHA");
+    partes.push("fecha de compra");
+  }
+  const codigo = codigoPg(e);
+
+  // El motivo tiene que EXPLICAR el error, no solo coexistir con él. Si la
+  // compra no trae empresa titular pero Postgres rechazó por otra cosa —un
+  // CHECK, una FK, un unique—, el diagnóstico sería falso y taparía justo lo
+  // que la prueba busca. En ese caso se devuelve sin motivo catalogado.
+  if (motivos.length && codigo === NOT_NULL) {
     return {
       compraId: liq.id,
       categoria: "a",
-      motivo: `falta ${faltantes.join(" y ")} en el origen; la columna es NOT NULL`,
+      motivos,
+      detalle: `falta ${partes.join(" y ")} en el origen; la columna es NOT NULL`,
+    };
+  }
+  if (motivos.length) {
+    return {
+      compraId: liq.id,
+      categoria: "a",
+      motivos: [],
+      detalle:
+        `el origen no trae ${partes.join(" y ")}, pero Postgres rechazó con ` +
+        `${codigo ?? "un error no identificado"}, que no es un NOT NULL: ` +
+        `el motivo no explica el fallo. ${primeraLinea(e)}`,
     };
   }
 
   const sinCategoria = (detalles.get(liq.id) ?? []).filter((d) => !d.categoria_codigo);
-  if (sinCategoria.length) {
+  if (sinCategoria.length && codigo === NOT_NULL) {
     return {
       compraId: liq.id,
       categoria: "a",
-      motivo: `${sinCategoria.length} lote(s) sin categoría en el origen`,
+      motivos: ["LOTE_SIN_CATEGORIA"],
+      detalle: `${sinCategoria.length} lote(s) sin categoría en el origen`,
     };
   }
 
   const tropasSinEmpresa = (tropas.get(liq.id) ?? []).filter((t) => !t.comprador_codigo);
-  if (tropasSinEmpresa.length) {
+  if (tropasSinEmpresa.length && codigo === NOT_NULL) {
     return {
       compraId: liq.id,
       categoria: "a",
-      motivo: `${tropasSinEmpresa.length} tropa(s) sin empresa compradora en el origen`,
+      motivos: ["TROPA_SIN_EMPRESA"],
+      detalle: `${tropasSinEmpresa.length} tropa(s) sin empresa compradora en el origen`,
     };
   }
 
+  // Sin motivo catalogado: el dato está y el modelo lo rechazó igual. Es (b), y
+  // (b) siempre hace fallar la prueba.
   return {
     compraId: liq.id,
     categoria: "b",
-    motivo: `el dato existe pero el modelo lo rechazó: ${msg.split("\n")[0]}`,
+    motivos: [],
+    detalle:
+      `el dato existe pero el modelo lo rechazó (${codigo ?? "sin código"}): ` +
+      `${primeraLinea(e)}`,
   };
 }
 
 function reportar(
   h: ReturnType<typeof leerHistorico>,
   fallos: Fallo[],
-  observaciones: string[],
+  contradicciones: Fallo[],
   totales: {
     entraron: number;
     lotesInsertados: number;
     tropasInsertadas: number;
     cargasInsertadas: number;
   }
-) {
-  console.log("=== universo ===");
-  console.log(`  compras con fecha_compra >= ${DESDE}: ${h.liquidaciones.length}`);
-  console.log(`  lotes en el origen                  : ${h.detalles.length}`);
-  console.log(`  tropas linkeadas por conciliación   : ${h.tropas.length}`);
-  console.log(`  DTE de esas tropas                  : ${h.dtes.length}`);
-
-  console.log("\n=== resultado ===");
-  console.log(`  entraron   : ${totales.entraron}`);
-  console.log(`  no entraron: ${fallos.length}`);
+): boolean {
+  const st = statSync(DB_HISTORICA);
+  console.log("=== base de origen ===");
+  console.log(`  archivo   : ${DB_HISTORICA}`);
+  console.log(`  modificada: ${st.mtime.toISOString()}`);
+  console.log(`  tamaño    : ${st.size} bytes`);
+  console.log(`  liquidaciones_liquidacion: ${h.totalLiquidaciones} filas en total`);
   console.log(
-    `  filas escritas (y revertidas): ${totales.tropasInsertadas} tropas, ` +
+    "  (es un pipeline vivo: estos números se mueven solos, por eso no son criterio)"
+  );
+
+  console.log("\n=== conteos (informativos, NO son la condición) ===");
+  console.log(`  compras en la ventana (>= ${DESDE}): ${h.liquidaciones.length}`);
+  console.log(`  lotes en el origen                 : ${h.detalles.length}`);
+  console.log(`  tropas linkeadas por conciliación  : ${h.tropas.length}`);
+  console.log(`  DTE de esas tropas                 : ${h.dtes.length}`);
+  console.log(`  entraron                           : ${totales.entraron}`);
+  console.log(`  no entraron                        : ${fallos.length}`);
+  console.log(
+    `  filas escritas y revertidas        : ${totales.tropasInsertadas} tropas, ` +
       `${totales.cargasInsertadas} cargas, ${totales.lotesInsertados} lotes`
   );
 
+  const todos = [...fallos, ...contradicciones];
   for (const cat of ["a", "b", "c"] as const) {
-    const delGrupo = fallos.filter((f) => f.categoria === cat);
-    console.log(`\n=== categoría (${cat}) — ${delGrupo.length} ===`);
-    for (const f of delGrupo) console.log(`  ${f.compraId}: ${f.motivo}`);
+    const grupo = todos.filter((f) => f.categoria === cat);
+    console.log(`\n=== categoría (${cat}) — ${grupo.length} ===`);
+    for (const f of grupo) {
+      const cod = f.motivos.length ? f.motivos.join("+") : "SIN CATALOGAR";
+      console.log(`  ${f.compraId}  [${cod}]  ${f.detalle}`);
+    }
   }
 
-  console.log(`\n=== observaciones (no son fallos de inserción) — ${observaciones.length} ===`);
-  for (const o of observaciones) console.log(`  ${o}`);
+  // ---------- reparto por motivo ----------
+  const porMotivo = new Map<string, number>();
+  for (const f of todos) {
+    for (const m of f.motivos) porMotivo.set(m, (porMotivo.get(m) ?? 0) + 1);
+  }
+  console.log("\n=== reparto por motivo ===");
+  for (const [m, n] of [...porMotivo].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${String(n).padStart(4)}  ${m}`);
+  }
 
-  console.log("\n=== JSON ===");
-  console.log(JSON.stringify({ fallos, observaciones, totales }, null, 2));
+  // ---------- veredicto ----------
+  const casosB = todos.filter((f) => f.categoria === "b");
+  const sinCatalogar = todos.filter((f) => f.motivos.length === 0 && f.categoria !== "b");
+
+  console.log("\n" + "=".repeat(66));
+  console.log("VEREDICTO");
+  console.log("=".repeat(66));
+
+  const okB = casosB.length === 0;
+  const okMotivos = sinCatalogar.length === 0;
+
+  console.log(
+    `  1. (b) en cero — ninguna compra afuera por el modelo : ${okB ? "SÍ" : "NO"}`
+  );
+  if (!okB) {
+    for (const f of casosB) console.log(`       ${f.compraId}: ${f.detalle}`);
+  }
+  console.log(
+    `  2. todo fallo cae en un motivo ya conocido           : ${okMotivos ? "SÍ" : "NO"}`
+  );
+  if (!okMotivos) {
+    for (const f of sinCatalogar) {
+      console.log(`       ${f.compraId} (${f.categoria}): ${f.detalle}`);
+    }
+    console.log("     Un motivo nuevo no se agrega al catálogo para callar la prueba:");
+    console.log("     primero se entiende qué pasa, y recién ahí se decide.");
+  }
+
+  const aprobada = okB && okMotivos;
+  console.log(`\n  ${aprobada ? "APROBADA" : "NO APROBADA"}`);
+  if (aprobada) {
+    console.log(
+      "  Los conteos pueden haber cambiado desde la última corrida: la base de\n" +
+        "  origen se re-ingesta. Eso no es una falla — mirá el bloque de arriba."
+    );
+  }
+  console.log("=".repeat(66));
+
+  console.log("\n=== motivos del catálogo ===");
+  for (const [k, v] of Object.entries(MOTIVOS_CONOCIDOS)) {
+    console.log(`  ${k}`);
+    console.log(`     ${v}`);
+  }
+
+  return aprobada;
 }
+
 
 main().catch((e) => {
   console.error(e);
