@@ -67,6 +67,9 @@ model Entidad {
   comprasComoPersona       Compra[] @relation("PersonaDeCompra")
   tropasComoCompradora     Tropa[]  @relation("CompradoraDeTropa")
 
+  reportesComoConsignatario ReporteCompra[] @relation("ConsignatarioDeReporte")
+  reportesComoPersona       ReporteCompra[] @relation("PersonaDeReporte")
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -147,6 +150,86 @@ model CategoriaSinonimo {
   @@map("categoria_sinonimo")
 }
 
+// ---------- El reporte del comprador (módulo 2) ----------
+
+enum EstadoReporte {
+  PENDIENTE
+  PROCESADO
+  DESCARTADO
+}
+
+/// Lo que manda el comprador desde la feria.
+///
+/// ES EVIDENCIA: guarda lo que él escribió, no una interpretación. No se pisa
+/// al armar la compra, y sigue existiendo aunque la oficina termine
+/// registrando otra cosa. Esa diferencia —el remito dice VQ, el comprador dice
+/// VA— es justamente lo que interesa conservar.
+///
+/// El reporte NO es obligatorio para que exista una compra: en más de la mitad
+/// de los casos la oficina tiene los remitos y no hay reporte. Exigirlo haría
+/// que alguien invente uno vacío para poder seguir.
+model ReporteCompra {
+  id Int @id @default(autoincrement())
+
+  /// Generada EN EL DISPOSITIVO, antes de que haya red. Es lo único que impide
+  /// que una conexión intermitente cree reportes duplicados: si la clave ya
+  /// llegó, el servidor devuelve el reporte existente en vez de crear otro.
+  /// Por eso es NOT NULL y unique — un reporte sin clave no se puede
+  /// desduplicar, y ese es el caso que rompe todo.
+  claveIdempotencia String @unique
+
+  /// Todo lo que sigue es nullable a propósito: el comprador está parado en un
+  /// remate y puede no saber la plaza, o mandar solo fotos.
+  fecha DateTime? @db.Date
+
+  /// El TEXTO es la verdad del reporte: es lo que él eligió o escribió, y se
+  /// guarda siempre. El id es una comodidad, y solo aparece si lo eligió del
+  /// catálogo cacheado. Sin señal no puede haber id: la entidad puede no
+  /// existir todavía en el servidor.
+  consignatarioTexto String?
+  consignatarioId    Int?
+  consignatario      Entidad? @relation("ConsignatarioDeReporte", fields: [consignatarioId], references: [id])
+
+  plazaTexto String?
+
+  /// Lo grueso, que es lo que se puede contar con una mano en un remate. Las
+  /// categorías, los kilos y los precios los pone la oficina.
+  cabezasAproximadas Int?
+  cantidadCamiones   Int?
+
+  /// Texto libre. Es donde marca las discrepancias con el remito.
+  observaciones String?
+
+  /// Quién reportó. Sale del link, no se tipea.
+  personaCompradoraId Int?
+  personaCompradora   Entidad? @relation("PersonaDeReporte", fields: [personaCompradoraId], references: [id])
+
+  /// DOS fechas distintas, y la diferencia es información. Con carga sin señal,
+  /// «cuándo lo cargó» y «cuándo llegó al servidor» pueden estar separados por
+  /// horas. `cargadoEn` es NOT NULL porque el dispositivo siempre lo sabe: se
+  /// genera junto con la clave de idempotencia, antes de que haya red.
+  cargadoEn  DateTime
+  recibidoEn DateTime @default(now())
+
+  estado EstadoReporte @default(PENDIENTE)
+
+  /// LAS COMPRAS QUE SALIERON DE ESTE REPORTE.
+  ///
+  /// La FK vive del lado de `Compra`, no acá, y no es un detalle: §2 del
+  /// documento de arranque dice que un reporte puede terminar en DOS compras, y
+  /// §8 lo exige como caso de prueba. Un `compraId` en esta tabla solo podría
+  /// apuntar a una, así que no podría representar el caso que el propio
+  /// documento pide verificar. La cardinalidad real es: una compra sale de a lo
+  /// sumo un reporte; un reporte produce cero, una o varias compras.
+  compras  Compra[]
+  adjuntos Adjunto[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("reporte_compra")
+}
+
 // ---------- Dominio de la compra (módulos 1 y 2) ----------
 
 // `Compra.empresaTitularId` y `Tropa.empresaCompradoraId` NO son el mismo dato:
@@ -198,6 +281,12 @@ model Compra {
   personaCompradora   Entidad? @relation("PersonaDeCompra", fields: [personaCompradoraId], references: [id])
 
   plazaLugar String?
+
+  /// De qué reporte del comprador salió esta compra, si salió de alguno.
+  /// Nullable porque el camino más frecuente NO tiene reporte: en la feria de
+  /// Darwash la oficina accede a los remitos directamente.
+  reporteId Int?
+  reporte   ReporteCompra? @relation(fields: [reporteId], references: [id])
 
   // La comisión NO vive acá: se aplica por renglón, no por compra. Está en
   // `Lote.comision` — ver la nota ahí sobre por qué el total no se guarda.
@@ -308,6 +397,12 @@ model Lote {
   categoriaSinonimoId Int
   categoriaSinonimo   CategoriaSinonimo @relation(fields: [categoriaSinonimoId], references: [id])
 
+  /// Nullable a propósito: si nadie registró de dónde salió la categoría, es
+  /// «s/d» y no una suposición. Poner REMITO por defecto sería inventar que
+  /// alguien miró el papel — exactamente el error que este proyecto existe para
+  /// no repetir.
+  origenCategoria OrigenCategoria?
+
   // Única columna de cantidad NOT NULL del esquema. En 2401 renglones
   // históricos de liquidaciones_detalleliquidacion, 0 tienen cantidad_cabezas
   // NULL y 0 tienen categoria_id NULL: categoría+cabezas es el par que siempre
@@ -352,6 +447,23 @@ model Lote {
   @@map("lote")
 }
 
+/// De dónde salió la categoría de un lote.
+///
+/// El comprador ve el animal; el remito dice otra cosa. Caso real y frecuente:
+/// el remito dice VQ y el comprador, mirándola, dice que es VA — y suele tener
+/// razón, porque el consignatario clasifica para vender y el comprador mira lo
+/// que se lleva.
+///
+/// Esa discrepancia es INFORMACIÓN, no un error. El sistema viejo habría
+/// guardado una de las dos y perdido la otra; es el mismo patrón que kg
+/// liquidados contra kg de llegada. Guardar de dónde vino la categoría es lo
+/// que a los seis meses permite contestar «¿cuántas veces el comprador vio algo
+/// distinto del papel?».
+enum OrigenCategoria {
+  REMITO
+  CORRECCION_COMPRADOR
+}
+
 enum TipoAdjunto {
   REMITO_FERIA // remitos de feria del módulo 2 (número + foto)
   ORIGEN_TERCERO // DECIDIR #6: original del consignatario, sin parsear
@@ -361,13 +473,32 @@ enum TipoAdjunto {
 // Generalizado en vez de una tabla RemitoFeria + una columna suelta por cada
 // tipo de documento nuevo que aparezca (regla: un concepto, un lugar).
 model Adjunto {
-  id       Int    @id @default(autoincrement())
-  compraId Int
-  compra   Compra @relation(fields: [compraId], references: [id])
+  id Int @id @default(autoincrement())
+
+  /// DOS PADRES POSIBLES, Y LOS DOS SON REALES.
+  ///
+  /// Las fotos de los remitos llegan por el reporte del comprador, pero en el
+  /// camino de Darwash —más de la mitad de las compras— no hay reporte y las
+  /// sube la oficina directo a la compra. Los dos son nullable, con un CHECK en
+  /// la base de que EXACTAMENTE UNO esté puesto: un adjunto sin padre es basura
+  /// y uno con dos es ambiguo.
+  ///
+  /// El CHECK no se puede expresar en Prisma; está escrito a mano en la
+  /// migración `adjunto_dos_padres`.
+  compraId Int?
+  compra   Compra? @relation(fields: [compraId], references: [id])
+
+  reporteId Int?
+  reporte   ReporteCompra? @relation(fields: [reporteId], references: [id])
 
   tipo   TipoAdjunto
   url    String
   numero String? // aplica solo a REMITO_FERIA
+
+  /// Lo que el comprador escribió AL LADO DE ESTA FOTO. Es donde marca la
+  /// discrepancia: «el remito dice VQ, para mí es VA». Texto libre a propósito
+  /// — está parado en un remate y la estructura la pone la oficina después.
+  nota String?
 
   creadoEn DateTime @default(now())
 
