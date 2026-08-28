@@ -135,6 +135,42 @@ const ALIAS_ENTIDAD: ReadonlyArray<{ enElHistorico: string; quedaComo: string }>
   { enElHistorico: "FERIA RODEO HUINCA S.R.L.", quedaComo: "FERIA RODEO HUINCA S.R.L" },
 ];
 
+/**
+ * Los ocho establecimientos que existen hoy. Confirmados por Iñaki el
+ * 28/08/2026.
+ *
+ * ES LA PALABRA DE LA CASA: establecimiento, no «destino».
+ *
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ «Feedlot», «Venta» y «VER» NO VAN, y no es un olvido.                     │
+ * │                                                                          │
+ * │ Están en el catálogo `destino` del sistema viejo, pero no son            │
+ * │ establecimientos: «Feedlot» es una clase de lugar, «Venta» es un destino │
+ * │ comercial y «VER» es una marca de «revisar esto». El catálogo viejo      │
+ * │ mezclaba las tres cosas. Si alguien los ve faltar y los agrega, vuelve a │
+ * │ meter en una tabla de lugares algo que no lo es.                          │
+ * └──────────────────────────────────────────────────────────────────────────┘
+ *
+ * Dos correcciones respecto del catálogo viejo, hechas a mano:
+ *   - «El Haras (feedlot)» y «Haras» eran dos filas para el mismo lugar. Queda
+ *     «El Haras». («Haras» nunca se usó en ningún renglón.)
+ *   - «SAN ANOTONIO» era un tipeo. Queda «San Antonio».
+ *
+ * Para la pantalla: El Haras concentra la mayor parte del stock, así que hay
+ * que ordenar por uso y no alfabético — alfabético lo entierra igual que a
+ * Darwash en los consignatarios.
+ */
+const ESTABLECIMIENTOS: readonly string[] = [
+  "El Haras",
+  "El Coloradito",
+  "El Descanso",
+  "La Cucuca",
+  "La Panchita",
+  "San Antonio",
+  "El Durazno",
+  "Pancho Primero",
+];
+
 type Rol =
   | "CONSIGNATARIO"
   | "EMPRESA_COMPRADORA"
@@ -336,6 +372,27 @@ async function sembrar(prisma: Cliente) {
     }
   }
 
+  // ---------- 1b. Los ocho establecimientos ----------
+  // Identidad por `nombreNormalizado` estricto, igual que las entidades. El
+  // nombre no se pisa: puede haberse corregido a mano.
+  const establecimientosEnBase = new Set(
+    (
+      await prisma.establecimiento.findMany({ select: { nombreNormalizado: true } })
+    ).map((e) => e.nombreNormalizado)
+  );
+  let establecimientosCreados = 0;
+  for (const nombre of ESTABLECIMIENTOS) {
+    const norm = normalizarNombre(nombre);
+    if (establecimientosEnBase.has(norm)) continue;
+    await prisma.establecimiento.upsert({
+      where: { nombreNormalizado: norm },
+      create: { nombre, nombreNormalizado: norm },
+      update: {},
+    });
+    establecimientosEnBase.add(norm);
+    establecimientosCreados++;
+  }
+
   // ---------- 2. Los 11 prefijos de tropa ----------
   // Cuelgan de la entidad de la empresa. La identidad del prefijo es su código,
   // que lleva el unique.
@@ -490,6 +547,13 @@ async function sembrar(prisma: Cliente) {
   console.log(
     `  esPropio rellenado / preservado: ${esPropioRellenado} / ${esPropioPreservado}`
   );
+
+  const establecimientosFinal = await prisma.establecimiento.count();
+  console.log("\n=== establecimientos ===");
+  console.log(`  en la base        : ${establecimientosFinal}`);
+  console.log(`  creados ahora     : ${establecimientosCreados}`);
+  console.log("  «Feedlot», «Venta» y «VER» quedan afuera a propósito: no son");
+  console.log("  establecimientos. Ver el comentario de ESTABLECIMIENTOS.");
 
   console.log("\n=== roles ===");
   console.log(`  declarados en total: ${rolesFinal}`);

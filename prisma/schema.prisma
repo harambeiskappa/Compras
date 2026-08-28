@@ -403,6 +403,13 @@ model Lote {
   /// no repetir.
   origenCategoria OrigenCategoria?
 
+  /// A qué establecimiento va este lote. Los lotes de una misma compra van a
+  /// establecimientos distintos —5 de 11 compras con el destino cargado lo
+  /// tienen mixto— y el establecimiento se correlaciona con la comisión:
+  /// feedlot 2 %, campo 3 %. Nullable: si no se sabe a dónde va, es «s/d».
+  establecimientoId Int?
+  establecimiento   Establecimiento? @relation(fields: [establecimientoId], references: [id])
+
   // Única columna de cantidad NOT NULL del esquema. En 2401 renglones
   // históricos de liquidaciones_detalleliquidacion, 0 tienen cantidad_cabezas
   // NULL y 0 tienen categoria_id NULL: categoría+cabezas es el par que siempre
@@ -445,6 +452,43 @@ model Lote {
   actualizadoEn DateTime @updatedAt
 
   @@map("lote")
+}
+
+/// A dónde va la hacienda de un lote.
+///
+/// ES LA PALABRA DE LA CASA: establecimiento, no «destino». Así los llaman
+/// ellos, y el catálogo viejo los tenía bajo `destino` mezclados con `Feedlot`,
+/// `Venta` y `VER`, que no son establecimientos.
+///
+/// CATÁLOGO PROPIO, NO ENTIDADES DEL PADRÓN — decisión cerrada el 28/08/2026.
+/// La Cucuca, El Coloradito, El Descanso y los demás son establecimientos y
+/// nada más que eso: no son empresas, no compran, no consignan, no venden. Si
+/// fueran entidades, `Venta` tendría que ser una entidad, y no lo es.
+///
+/// La confusión que veníamos arrastrando —«PECUARIA EL COLORADITO» aparecía
+/// como hotelero en el padrón— es un artefacto de nombres del sistema viejo, no
+/// un solape real. Comparados exacto, el solape entre este catálogo y los
+/// hoteleros es CERO.
+///
+/// Para cuando se diseñe la pantalla: El Haras concentra la mayor parte del
+/// stock, así que un orden alfabético lo entierra igual que a Darwash en los
+/// consignatarios. Ordenar por uso, no por nombre.
+model Establecimiento {
+  id Int @id @default(autoincrement())
+
+  /// Mismo patrón que las entidades: `nombre` guarda el texto tal como se
+  /// escribió y `nombreNormalizado` (trim + minúsculas + vocales sin acento,
+  /// la ñ SIN plegar — ver src/lib/normalizar.ts) lleva el @unique.
+  nombre            String
+  nombreNormalizado String  @unique
+  activo            Boolean @default(true)
+
+  lotes Lote[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("establecimiento")
 }
 
 /// De dónde salió la categoría de un lote.
