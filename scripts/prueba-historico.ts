@@ -221,75 +221,89 @@ async function main() {
     await prisma.$transaction(
       async (tx) => {
         // ---------- catálogos ----------
-        // Empresas y consignatarios YA ESTÁN SEMBRADOS de verdad (prisma/seed.ts):
-        // se reusan, no se recrean. Recrearlos chocaría contra el unique de
-        // `prefijo_tropa.codigo`, y además la prueba es más fiel si corre contra
-        // los mismos catálogos que va a usar la app.
+        // El padrón de entidades YA ESTÁ SEMBRADO de verdad (prisma/seed.ts):
+        // se reusa, no se recrea. Recrearlo chocaría contra el unique de
+        // `entidad.nombreNormalizado` y contra el de `prefijo_tropa.codigo`, y
+        // además la prueba es más fiel corriendo contra los mismos catálogos
+        // que va a usar la app.
+        //
+        // Todos los roles resuelven contra la MISMA tabla; lo que distingue al
+        // consignatario del vendedor es la columna de `compra` en la que va su
+        // id, no de dónde salió.
+        const entidadPorNorm = new Map<string, number>();
+        for (const e of await tx.entidad.findMany({
+          select: { id: true, nombreNormalizado: true },
+        })) {
+          entidadPorNorm.set(e.nombreNormalizado, e.id);
+        }
+
+        /** Devuelve el id de la entidad, creándola si el histórico trae un
+         *  nombre que el seed no tenía. Los roles se declaran también. */
+        const entidadDe = async (nombre: string, rol: string) => {
+          const norm = normalizarNombre(nombre);
+          let id = entidadPorNorm.get(norm);
+          if (id === undefined) {
+            const [row] = await tx.$queryRaw<{ id: number }[]>`
+              INSERT INTO entidad (nombre, "nombreNormalizado", activo, "creadoEn", "actualizadoEn")
+              VALUES (${nombre}, ${norm}, true, now(), now())
+              ON CONFLICT ("nombreNormalizado") DO UPDATE SET nombre = entidad.nombre
+              RETURNING id
+            `;
+            id = row.id;
+            entidadPorNorm.set(norm, id);
+          }
+          await tx.$executeRawUnsafe(
+            `INSERT INTO entidad_rol ("entidadId", rol, "creadoEn")
+             VALUES ($1, $2::"RolEntidad", now())
+             ON CONFLICT ("entidadId", rol) DO NOTHING`,
+            id,
+            rol
+          );
+          return id;
+        };
+
         const empresaId = new Map<string, number>();
-        const prefijos = await tx.prefijoTropa.findMany({
-          select: { codigo: true, empresaId: true },
-        });
-        for (const p of prefijos) empresaId.set(p.codigo, p.empresaId);
+        for (const p of await tx.prefijoTropa.findMany({
+          select: { codigo: true, entidadId: true },
+        })) {
+          empresaId.set(p.codigo, p.entidadId);
+        }
 
         // Si algún prefijo del histórico todavía no estuviera sembrado, se crea
         // acá dentro con nombre placeholder: la razón social real no se inventa.
         for (const c of h.compradores) {
           if (empresaId.has(c.codigo)) continue;
-          const [row] = await tx.$queryRaw<{ id: number }[]>`
-            INSERT INTO empresa (nombre, "esPropio", activo, "creadoEn", "actualizadoEn")
-            VALUES (${`(pendiente razón social) ${c.codigo}`}, ${c.propio === 1}, true, now(), now())
-            RETURNING id
-          `;
-          empresaId.set(c.codigo, row.id);
+          const id = await entidadDe(
+            `(pendiente razón social) ${c.codigo}`,
+            "EMPRESA_COMPRADORA"
+          );
           await tx.$executeRaw`
-            INSERT INTO prefijo_tropa (codigo, "empresaId") VALUES (${c.codigo}, ${row.id})
+            INSERT INTO prefijo_tropa (codigo, "entidadId") VALUES (${c.codigo}, ${id})
           `;
+          empresaId.set(c.codigo, id);
         }
 
         const consignatarioId = new Map<string, number>();
-        for (const c of await tx.consignatario.findMany({
-          select: { id: true, nombre: true },
-        })) {
-          consignatarioId.set(c.nombre, c.id);
-        }
         for (const nombre of new Set(
           h.liquidaciones.map((l) => l.consignatario.trim()).filter((s) => s !== "")
         )) {
-          if (consignatarioId.has(nombre)) continue;
-          const [row] = await tx.$queryRaw<{ id: number }[]>`
-            INSERT INTO consignatario (nombre, "nombreNormalizado", activo, "creadoEn", "actualizadoEn")
-            VALUES (${nombre}, ${normalizarNombre(nombre)}, true, now(), now())
-            ON CONFLICT ("nombreNormalizado") DO UPDATE SET nombre = consignatario.nombre
-            RETURNING id
-          `;
-          consignatarioId.set(nombre, row.id);
+          consignatarioId.set(nombre, await entidadDe(nombre, "CONSIGNATARIO"));
         }
 
         const vendedorId = new Map<string, number>();
         for (const nombre of new Set(
           h.tropas.map((t) => t.proveedor.trim()).filter((s) => s !== "")
         )) {
-          const [row] = await tx.$queryRaw<{ id: number }[]>`
-            INSERT INTO vendedor (nombre, "nombreNormalizado", activo, "creadoEn", "actualizadoEn")
-            VALUES (${nombre}, ${normalizarNombre(nombre)}, true, now(), now())
-            ON CONFLICT ("nombreNormalizado") DO UPDATE SET nombre = vendedor.nombre
-            RETURNING id
-          `;
-          vendedorId.set(nombre, row.id);
+          vendedorId.set(nombre, await entidadDe(nombre, "VENDEDOR"));
         }
 
         const hoteleroId = new Map<string, number>();
         for (const nombre of new Set(
           h.tropas.map((t) => t.hotelero.trim()).filter((s) => s !== "")
         )) {
-          const [row] = await tx.$queryRaw<{ id: number }[]>`
-            INSERT INTO hotelero (nombre, "nombreNormalizado", activo, "creadoEn", "actualizadoEn")
-            VALUES (${nombre}, ${normalizarNombre(nombre)}, true, now(), now())
-            ON CONFLICT ("nombreNormalizado") DO UPDATE SET nombre = hotelero.nombre
-            RETURNING id
-          `;
-          hoteleroId.set(nombre, row.id);
+          hoteleroId.set(nombre, await entidadDe(nombre, "HOTELERO"));
         }
+
 
         // sinónimos ya sembrados de verdad
         const sinonimos = await tx.categoriaSinonimo.findMany({

@@ -24,116 +24,90 @@ datasource db {
 
 // ---------- Catálogos ----------
 
-model Empresa {
-  id       Int      @id @default(autoincrement())
-  nombre   String
-  // Nullable a propósito: DECIDIR #10 (TRB propio o tercero) sigue sin resolver.
-  // Si fuera NOT NULL, el seed estaría obligado a inventar una respuesta.
-  esPropio Boolean?
-  activo   Boolean  @default(true)
+/// Padrón único de entidades — decisión #9, cerrada el 27/08/2026.
+///
+/// Una sola tabla para consignatarios, nuestras empresas, vendedores/origen,
+/// hoteleros y personas compradoras. Antes eran cinco catálogos separados, y el
+/// mismo actor real vivía en varios a la vez: DARWASH SA es consignatario en 239
+/// tropas y proveedor en 143; seis de los once hoteleros del histórico son
+/// empresas nuestras. Con tablas separadas, cada aparición era otra fila, y
+/// corregir un nombre en una sola las hacía divergir.
+///
+/// **EL ROL LO DA EL CAMPO, NO LA TABLA.** Esto NO mezcla los cuatro roles:
+/// `Compra` sigue teniendo `consignatarioId`, `empresaTitularId`, `vendedorId`,
+/// `hoteleroId` y `personaCompradoraId` como campos DISTINTOS, y `Tropa` su
+/// `empresaCompradoraId`. Es al revés: unificar la tabla es lo que permite que
+/// Darwash sea consignatario, vendedor y empresa propia sin ser tres filas que
+/// se contradicen. La regla 12 no se relaja, se vuelve posible.
+///
+/// `esPropio` es ORTOGONAL al rol: Tercio Bravo es `esPropio = false` y juega
+/// HOTELERO; Darwash es `esPropio = true` y juega CONSIGNATARIO y VENDEDOR.
+/// Sigue nullable, como estaba en la Empresa que reemplaza.
+model Entidad {
+  id Int @id @default(autoincrement())
 
-  prefijos           PrefijoTropa[]
-  // «donde esta empresa figura como titular», no «las compras de esta empresa»:
-  // las cabezas pueden quedar en otra. Ver la nota sobre titular vs. compradora.
-  comprasComoTitular Compra[]
-  tropas             Tropa[]
+  /// `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
+  /// (trim + minúsculas + vocales sin acento, la ñ SIN plegar — ver
+  /// src/lib/normalizar.ts) lleva el @unique. Es el unique estricto: no toca
+  /// puntuación ni sufijos societarios, así que «Darwash» y «DARWASH SA»
+  /// siguen siendo DOS entidades. Que sean la misma la decide una persona,
+  /// no el seed.
+  nombre            String
+  nombreNormalizado String   @unique
+  esPropio          Boolean?
+  activo            Boolean  @default(true)
+
+  roles    EntidadRol[]
+  prefijos PrefijoTropa[]
+
+  comprasComoConsignatario Compra[] @relation("ConsignatarioDeCompra")
+  comprasComoTitular       Compra[] @relation("TitularDeCompra")
+  comprasComoVendedor      Compra[] @relation("VendedorDeCompra")
+  comprasComoHotelero      Compra[] @relation("HoteleroDeCompra")
+  comprasComoPersona       Compra[] @relation("PersonaDeCompra")
+  tropasComoCompradora     Tropa[]  @relation("CompradoraDeTropa")
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
-  @@map("empresa")
+  @@map("entidad")
+}
+
+enum RolEntidad {
+  CONSIGNATARIO
+  EMPRESA_COMPRADORA
+  VENDEDOR
+  HOTELERO
+  PERSONA_COMPRADORA
+}
+
+/// En qué papeles ya se vio a cada entidad. NO es una restricción: nada impide
+/// elegir una entidad en un campo cuyo rol no tiene declarado.
+///
+/// Existe por el buscador. Con ~200 entidades en una sola tabla, el selector de
+/// hotelero mostraría los 173 vendedores y sería inservible. Cada selector
+/// muestra PRIMERO las entidades con su rol; el resto queda buscable pero
+/// abajo. Crear al vuelo desde un campo agrega el rol de ese campo.
+model EntidadRol {
+  entidadId Int
+  entidad   Entidad    @relation(fields: [entidadId], references: [id], onDelete: Cascade)
+  rol       RolEntidad
+
+  creadoEn DateTime @default(now())
+
+  @@id([entidadId, rol])
+  @@map("entidad_rol")
 }
 
 // Un mismo comprador puede tener más de un prefijo de tropa (por eso 1:N y no
-// una columna suelta en Empresa). Ver DECIDIR #10 sobre qué nombres van acá.
+// una columna suelta en Entidad). TRB cierra la decisión #10: es de terceros.
 model PrefijoTropa {
   id        Int     @id @default(autoincrement())
   codigo    String  @unique // ej. "PEG", "TAP", "LTA"
-  empresaId Int
-  empresa   Empresa @relation(fields: [empresaId], references: [id])
+  entidadId Int
+  entidad   Entidad @relation(fields: [entidadId], references: [id])
 
   @@map("prefijo_tropa")
-}
-
-model Consignatario {
-  id                Int     @id @default(autoincrement())
-  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
-  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
-  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
-  // este catálogo se crea al vuelo desde un buscador del formulario, donde
-  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
-  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
-  nombre            String
-  nombreNormalizado String  @unique
-  activo            Boolean @default(true)
-
-  compras Compra[]
-
-  creadoEn      DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
-
-  @@map("consignatario")
-}
-
-model Vendedor {
-  id                Int     @id @default(autoincrement())
-  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
-  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
-  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
-  // este catálogo se crea al vuelo desde un buscador del formulario, donde
-  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
-  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
-  nombre            String
-  nombreNormalizado String  @unique
-  activo            Boolean @default(true)
-
-  compras Compra[]
-
-  creadoEn      DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
-
-  @@map("vendedor")
-}
-
-model Hotelero {
-  id                Int     @id @default(autoincrement())
-  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
-  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
-  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
-  // este catálogo se crea al vuelo desde un buscador del formulario, donde
-  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
-  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
-  nombre            String
-  nombreNormalizado String  @unique
-  activo            Boolean @default(true)
-
-  compras Compra[]
-
-  creadoEn      DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
-
-  @@map("hotelero")
-}
-
-// Sin precedente histórico: no existe en ningún lado del sistema viejo.
-model PersonaCompradora {
-  id                Int     @id @default(autoincrement())
-  // `nombre` guarda el texto tal como se escribió; `nombreNormalizado`
-  // (trim + minúsculas + vocales sin acento, ver src/lib/normalizar.ts) lleva
-  // el @unique. Mismo patrón que CategoriaSinonimo, y por el mismo motivo:
-  // este catálogo se crea al vuelo desde un buscador del formulario, donde
-  // tipear un nombre nuevo es un clic, y sin esto nada impide dos filas para
-  // la misma entidad. Quien busque o inserte tiene que normalizar ANTES.
-  nombre            String
-  nombreNormalizado String  @unique
-  activo            Boolean @default(true)
-
-  compras Compra[]
-
-  creadoEn      DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
-
-  @@map("persona_compradora")
 }
 
 // Las 8 canónicas: NV, NT, VQ, VA, TO, TM, TH, T.
@@ -207,21 +181,21 @@ model Compra {
   // vacío, que es justo el agujero que se está tapando. En el histórico hay 14
   // compras sin consignatario (ver docs/prueba-historico-modulos-1-2.md).
   consignatarioId Int
-  consignatario   Consignatario @relation(fields: [consignatarioId], references: [id])
+  consignatario   Entidad @relation("ConsignatarioDeCompra", fields: [consignatarioId], references: [id])
 
   // Bajo qué empresa se registra la compra; dato del módulo 1, antes de que
   // exista ninguna tropa.
   empresaTitularId Int
-  empresaTitular   Empresa @relation(fields: [empresaTitularId], references: [id])
+  empresaTitular   Entidad @relation("TitularDeCompra", fields: [empresaTitularId], references: [id])
 
   vendedorId Int?
-  vendedor   Vendedor? @relation(fields: [vendedorId], references: [id])
+  vendedor   Entidad? @relation("VendedorDeCompra", fields: [vendedorId], references: [id])
 
   hoteleroId Int?
-  hotelero   Hotelero? @relation(fields: [hoteleroId], references: [id])
+  hotelero   Entidad? @relation("HoteleroDeCompra", fields: [hoteleroId], references: [id])
 
   personaCompradoraId Int?
-  personaCompradora   PersonaCompradora? @relation(fields: [personaCompradoraId], references: [id])
+  personaCompradora   Entidad? @relation("PersonaDeCompra", fields: [personaCompradoraId], references: [id])
 
   plazaLugar String?
 
@@ -253,7 +227,7 @@ model Tropa {
   // A quién le quedan efectivamente estas cabezas; casi siempre es la titular
   // de la compra, la excepción es una empresa que compró poco y se cuelga.
   empresaCompradoraId Int
-  empresaCompradora   Empresa @relation(fields: [empresaCompradoraId], references: [id])
+  empresaCompradora   Entidad @relation("CompradoraDeTropa", fields: [empresaCompradoraId], references: [id])
 
   nroTropa String?   @unique
   fecha    DateTime? @db.Date

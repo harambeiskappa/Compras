@@ -70,6 +70,13 @@ const EMPRESAS: ReadonlyArray<{
   { nombre: "Tercio Bravo", esPropio: false, prefijos: ["TRB"] },
 ];
 
+type Rol =
+  | "CONSIGNATARIO"
+  | "EMPRESA_COMPRADORA"
+  | "VENDEDOR"
+  | "HOTELERO"
+  | "PERSONA_COMPRADORA";
+
 type FilaHistorica = {
   id: number;
   codigo: string;
@@ -88,28 +95,44 @@ function leerHistoricas(): FilaHistorica[] {
 }
 
 /**
- * Consignatarios del histórico.
+ * Los nombres del histórico, por el rol en el que aparecieron.
  *
- * Sale SOLO de `liquidaciones_liquidacion.consignatario`, que es el campo que
- * corresponde a `Compra.consignatarioId`. `ingresos_tropa.consignatario`
- * queda deliberadamente afuera: guarda las mismas entidades escritas distinto
- * («Darwash» vs «DARWASH SA», «Talano Hnos» vs «TALANO HERMANOS SRL»), más
- * valores que no son consignatarios en absoluto («TRASLADO», «DESTETE») y
- * empresas nuestras. Unificar las dos listas exige decidir qué texto
- * representa a qué entidad real, y eso no se adivina.
+ * El rol sale del CAMPO en el que estaba cada nombre, que es toda la evidencia
+ * que hay: `liquidaciones_liquidacion.consignatario` fue consignatario,
+ * `ingresos_tropa.proveedor` fue vendedor, `ingresos_tropa.hotelero` fue
+ * hotelero.
+ *
+ * `ingresos_tropa.consignatario` queda deliberadamente afuera: guarda las
+ * mismas entidades escritas distinto («Darwash» vs «DARWASH SA», «Talano Hnos»
+ * vs «TALANO HERMANOS SRL»), valores que no son consignatarios en absoluto
+ * («TRASLADO» 98 veces, «DESTETE») y empresas nuestras. Decidir qué texto es
+ * qué entidad real no se adivina.
  */
-function leerConsignatarios(): string[] {
+function leerNombresDelHistorico(): { nombre: string; rol: Rol }[] {
   const db = new DatabaseSync(DB_HISTORICA, { readOnly: true });
   try {
-    const filas = db
-      .prepare(
-        `SELECT DISTINCT trim(consignatario) AS nombre
-         FROM liquidaciones_liquidacion
-         WHERE trim(coalesce(consignatario,'')) <> ''
-         ORDER BY nombre`
-      )
-      .all() as unknown as { nombre: string }[];
-    return filas.map((f) => f.nombre);
+    const leer = (sql: string, rol: Rol) =>
+      (db.prepare(sql).all() as unknown as { nombre: string }[]).map((f) => ({
+        nombre: f.nombre.trim(),
+        rol,
+      }));
+    return [
+      ...leer(
+        `SELECT DISTINCT trim(consignatario) AS nombre FROM liquidaciones_liquidacion
+         WHERE trim(coalesce(consignatario,'')) <> '' ORDER BY nombre`,
+        "CONSIGNATARIO"
+      ),
+      ...leer(
+        `SELECT DISTINCT trim(proveedor) AS nombre FROM ingresos_tropa
+         WHERE trim(coalesce(proveedor,'')) <> '' ORDER BY nombre`,
+        "VENDEDOR"
+      ),
+      ...leer(
+        `SELECT DISTINCT trim(hotelero) AS nombre FROM ingresos_tropa
+         WHERE trim(coalesce(hotelero,'')) <> '' ORDER BY nombre`,
+        "HOTELERO"
+      ),
+    ];
   } finally {
     db.close();
   }
@@ -131,102 +154,119 @@ async function main() {
 type Cliente = Awaited<typeof import("@/lib/prisma")>["prisma"];
 
 async function sembrar(prisma: Cliente) {
-  // ---------- 1. Las 8 empresas y sus 11 prefijos ----------
-  const prefijosEnBase = await prisma.prefijoTropa.findMany({
-    select: { codigo: true, empresaId: true },
-  });
-  const empresaPorPrefijo = new Map(
-    prefijosEnBase.map((p) => [p.codigo, p.empresaId])
+  // ---------- 1. El padrón de entidades y sus roles ----------
+  //
+  // Una sola tabla. La identidad es `nombreNormalizado` con el unique ESTRICTO:
+  // colapsa lo que difiere solo en mayúsculas o acentos, y NADA MÁS. «Darwash»
+  // y «DARWASH SA» siguen siendo dos entidades — que sean la misma lo decide
+  // una persona, no el seed.
+  const candidatos: { nombre: string; rol: Rol }[] = [
+    ...EMPRESAS.map((e) => ({ nombre: e.nombre, rol: "EMPRESA_COMPRADORA" as Rol })),
+    ...leerNombresDelHistorico(),
+  ];
+
+  // Agrupar por nombre normalizado. Se conserva la primera variante cruda vista
+  // como `nombre`; el resto queda registrado para poder reportar qué colapsó.
+  type Grupo = { nombre: string; variantes: Set<string>; roles: Set<Rol> };
+  const grupoPorNorm = new Map<string, Grupo>();
+  for (const c of candidatos) {
+    const norm = normalizarNombre(c.nombre);
+    let g = grupoPorNorm.get(norm);
+    if (!g) {
+      g = { nombre: c.nombre, variantes: new Set(), roles: new Set() };
+      grupoPorNorm.set(norm, g);
+    }
+    g.variantes.add(c.nombre);
+    g.roles.add(c.rol);
+  }
+
+  const colapsos = [...grupoPorNorm.entries()]
+    .filter(([, g]) => g.variantes.size > 1 || g.roles.size > 1)
+    .map(([norm, g]) => ({
+      norm,
+      variantes: [...g.variantes].sort(),
+      roles: [...g.roles].sort(),
+    }));
+
+  const esPropioDe = new Map(EMPRESAS.map((e) => [normalizarNombre(e.nombre), e.esPropio]));
+
+  const enBase = new Map(
+    (
+      await prisma.entidad.findMany({
+        select: { id: true, nombreNormalizado: true, esPropio: true },
+      })
+    ).map((e) => [e.nombreNormalizado, e])
   );
 
-  let empresasCreadas = 0;
-  let empresasYaEstaban = 0;
-  let prefijosCreados = 0;
+  let entidadesCreadas = 0;
+  let entidadesYaEstaban = 0;
   let esPropioRellenado = 0;
   let esPropioPreservado = 0;
-  const conflictos: string[] = [];
+  let rolesCreados = 0;
+  const idPorNorm = new Map<string, number>();
 
-  for (const def of EMPRESAS) {
-    const ids = new Set(
-      def.prefijos
-        .map((p) => empresaPorPrefijo.get(p))
-        .filter((x): x is number => x !== undefined)
-    );
+  for (const [norm, g] of grupoPorNorm) {
+    const existente = enBase.get(norm);
+    const propio = esPropioDe.get(norm) ?? null;
+    let id: number;
 
-    if (ids.size > 1) {
-      // Alguien separó los prefijos de una misma empresa. Podría ser
-      // deliberado; unificarlos sería pisar esa decisión. Se reporta y se salta.
-      conflictos.push(
-        `${def.nombre}: sus prefijos (${def.prefijos.join(", ")}) apuntan a ` +
-          `${ids.size} empresas distintas (ids ${[...ids].join(", ")}) — ` +
-          `no se toca, resolvelo a mano`
-      );
-      continue;
-    }
-
-    let empresaId: number;
-
-    if (ids.size === 1) {
-      empresaId = [...ids][0];
-      empresasYaEstaban++;
-      // El nombre NO se toca nunca: puede haberse editado a mano.
-      const actual = await prisma.empresa.findUniqueOrThrow({
-        where: { id: empresaId },
-        select: { esPropio: true },
-      });
-      if (actual.esPropio === null) {
-        await prisma.empresa.update({
-          where: { id: empresaId },
-          data: { esPropio: def.esPropio },
-        });
+    if (existente) {
+      id = existente.id;
+      entidadesYaEstaban++;
+      // El nombre NO se toca nunca: puede haberse editado a mano. `esPropio`
+      // sigue la misma regla que las canónicas: rellena si está en NULL, nunca
+      // pisa un valor ya puesto.
+      if (existente.esPropio === null && propio !== null) {
+        await prisma.entidad.update({ where: { id }, data: { esPropio: propio } });
         esPropioRellenado++;
-      } else {
+      } else if (existente.esPropio !== null) {
         esPropioPreservado++;
       }
     } else {
-      const nueva = await prisma.empresa.create({
-        data: { nombre: def.nombre, esPropio: def.esPropio },
+      const nueva = await prisma.entidad.create({
+        data: { nombre: g.nombre, nombreNormalizado: norm, esPropio: propio },
       });
-      empresaId = nueva.id;
-      empresasCreadas++;
+      id = nueva.id;
+      entidadesCreadas++;
     }
 
-    for (const codigo of def.prefijos) {
-      if (empresaPorPrefijo.has(codigo)) continue;
-      await prisma.prefijoTropa.create({ data: { codigo, empresaId } });
-      empresaPorPrefijo.set(codigo, empresaId);
-      prefijosCreados++;
+    idPorNorm.set(norm, id);
+
+    // Los roles son aditivos: se agrega el que falte y no se saca ninguno. Que
+    // una entidad ya no aparezca en el histórico con cierto rol no significa
+    // que no lo tenga.
+    for (const rol of g.roles) {
+      const r = await prisma.entidadRol.upsert({
+        where: { entidadId_rol: { entidadId: id, rol } },
+        create: { entidadId: id, rol },
+        update: {},
+        select: { creadoEn: true },
+      });
+      if (r) rolesCreados++;
     }
   }
 
-  // ---------- 2. Consignatarios del histórico ----------
-  // La identidad es `nombreNormalizado`, que lleva el unique: el upsert es
-  // idempotente por sí solo y dos textos que difieren solo en mayúsculas o
-  // acentos entran como UNA fila. `nombre` guarda el texto tal como vino y no
-  // se pisa en el update: puede haberse corregido a mano.
-  const delHistorico = leerConsignatarios();
-  const yaEstaban = new Set(
-    (
-      await prisma.consignatario.findMany({ select: { nombreNormalizado: true } })
-    ).map((c) => c.nombreNormalizado)
+  // ---------- 2. Los 11 prefijos de tropa ----------
+  // Cuelgan de la entidad de la empresa. La identidad del prefijo es su código,
+  // que lleva el unique.
+  const prefijosEnBase = new Set(
+    (await prisma.prefijoTropa.findMany({ select: { codigo: true } })).map((p) => p.codigo)
   );
-  let consignatariosCreados = 0;
-  let consignatariosColapsados = 0;
-  const vistos = new Set<string>();
-  for (const nombre of delHistorico) {
-    const norm = normalizarNombre(nombre);
-    if (vistos.has(norm)) {
-      consignatariosColapsados++;
+  let prefijosCreados = 0;
+  const conflictos: string[] = [];
+
+  for (const def of EMPRESAS) {
+    const entidadId = idPorNorm.get(normalizarNombre(def.nombre));
+    if (entidadId === undefined) {
+      conflictos.push(`${def.nombre}: no se resolvió su entidad, se saltean sus prefijos`);
       continue;
     }
-    vistos.add(norm);
-    if (yaEstaban.has(norm)) continue;
-    await prisma.consignatario.upsert({
-      where: { nombreNormalizado: norm },
-      create: { nombre, nombreNormalizado: norm },
-      update: {},
-    });
-    consignatariosCreados++;
+    for (const codigo of def.prefijos) {
+      if (prefijosEnBase.has(codigo)) continue;
+      await prisma.prefijoTropa.create({ data: { codigo, entidadId } });
+      prefijosEnBase.add(codigo);
+      prefijosCreados++;
+    }
   }
 
   // ---------- 3. Las 8 canónicas ----------
@@ -345,26 +385,40 @@ async function sembrar(prisma: Cliente) {
   }
 
   // ---------- 5. Reporte ----------
-  const empresasFinal = await prisma.empresa.count();
+  const entidadesFinal = await prisma.entidad.count();
   const prefijosFinal = await prisma.prefijoTropa.count();
-  const consignatariosFinal = await prisma.consignatario.count();
+  const rolesFinal = await prisma.entidadRol.count();
+  const porRol = await prisma.entidadRol.groupBy({ by: ["rol"], _count: { rol: true } });
 
-  console.log("=== empresas ===");
-  console.log(`  en la base        : ${empresasFinal}   (prefijos: ${prefijosFinal})`);
-  console.log(`  creadas ahora     : ${empresasCreadas}`);
-  console.log(`  ya estaban        : ${empresasYaEstaban}`);
+  console.log("=== padrón de entidades ===");
+  console.log(`  nombres leídos    : ${candidatos.length}`);
+  console.log(`  entidades únicas  : ${grupoPorNorm.size}`);
+  console.log(`  en la base        : ${entidadesFinal}   (prefijos: ${prefijosFinal})`);
+  console.log(`  creadas ahora     : ${entidadesCreadas}`);
+  console.log(`  ya estaban        : ${entidadesYaEstaban}`);
   console.log(`  prefijos creados  : ${prefijosCreados}`);
-  console.log(`  esPropio rellenado / preservado: ${esPropioRellenado} / ${esPropioPreservado}`);
-  if (conflictos.length) {
-    console.log(`\n  OJO: ${conflictos.length} conflicto(s) de prefijos, sin tocar:`);
-    for (const c of conflictos) console.log(`    ${c}`);
+  console.log(
+    `  esPropio rellenado / preservado: ${esPropioRellenado} / ${esPropioPreservado}`
+  );
+
+  console.log("\n=== roles ===");
+  console.log(`  declarados en total: ${rolesFinal}`);
+  for (const r of [...porRol].sort((a, b) => b._count.rol - a._count.rol)) {
+    console.log(`    ${r.rol.padEnd(20)} ${r._count.rol}`);
   }
 
-  console.log("\n=== consignatarios ===");
-  console.log(`  en la base        : ${consignatariosFinal}`);
-  console.log(`  en el histórico   : ${delHistorico.length}`);
-  console.log(`  creados ahora     : ${consignatariosCreados}`);
-  console.log(`  colapsados por normalizar: ${consignatariosColapsados}`);
+  console.log(`\n=== colapsaron en una sola entidad: ${colapsos.length} ===`);
+  console.log("  Solo por nombreNormalizado estricto. Nombres distintos que");
+  console.log("  parezcan la misma entidad NO se unifican: lo decide una persona.");
+  for (const c of colapsos) {
+    console.log(`    ${c.norm}`);
+    console.log(`       variantes: ${c.variantes.join("  |  ")}`);
+    console.log(`       roles    : ${c.roles.join(", ")}`);
+  }
+  if (conflictos.length) {
+    console.log(`\n  OJO: ${conflictos.length} conflicto(s), sin tocar:`);
+    for (const c of conflictos) console.log(`    ${c}`);
+  }
 
   console.log("\n=== canónicas ===");
   console.log(`  en la base        : ${canonicas.length}`);
