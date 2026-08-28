@@ -1,15 +1,14 @@
+import "server-only";
+
 /*
- * Módulo de servidor. NO lleva `import "server-only"` a propósito: ese paquete
- * revienta al importarse desde cualquier runtime que no sea el de React Server
- * Components, y eso deja afuera a scripts/verificar-modulo-1.ts, que existe
- * justamente para probar esta lógica sin pasar por el navegador.
+ * La guarda de arriba hace fallar el BUILD si un componente con "use client"
+ * importa este módulo, aunque sea por accidente al convertir un import de tipo
+ * en uno de valor. Es barata y ataja un error caro: filtrar el acceso a la base
+ * al bundle del navegador.
  *
- * Lo que igual impide que esto termine en el bundle del cliente:
- *   - todo lo que lo consume es `acciones.ts`, que lleva "use server", o una
- *     página de servidor;
- *   - `@/lib/prisma` arrastra `@prisma/adapter-pg`, que es de Node y no compila
- *     para el browser.
- * Si algún día un componente con "use client" importa esto, el build falla.
+ * `scripts/verificar-modulo-1.ts` la neutraliza para sí mismo con un parche de
+ * resolución — está explicado ahí. La guarda queda intacta para la app, que es
+ * donde importa.
  */
 import type { RolEntidad } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";

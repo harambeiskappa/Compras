@@ -1,13 +1,17 @@
 import Link from "next/link";
 
+import { normalizarNombre } from "@/lib/normalizar";
 import { prisma } from "@/lib/prisma";
 import { FormularioAlta } from "@/componentes/FormularioAlta";
+import { PLAZAS_SUGERIDAS } from "@/lib/plazas";
 
 export const dynamic = "force-dynamic";
 
 export default async function PaginaNueva() {
-  // La plaza es texto libre, así que el datalist se arma con lo ya usado en vez
-  // de con un catálogo: sugiere sin obligar.
+  // La plaza es texto libre, así que el datalist sugiere sin obligar. Se unen
+  // las 12 sugerencias iniciales del histórico con lo que ya se haya tipeado en
+  // compras reales: el día uno hay de dónde elegir, y después la lista se
+  // corrige sola con el uso.
   const usadas = await prisma.compra.findMany({
     where: { plazaLugar: { not: null } },
     select: { plazaLugar: true },
@@ -15,7 +19,19 @@ export default async function PaginaNueva() {
     orderBy: { plazaLugar: "asc" },
     take: 60,
   });
-  const plazas = usadas.map((p) => p.plazaLugar!).filter(Boolean);
+
+  // Dedup sin distinguir mayúsculas ni acentos, para no ofrecer WASHINGTON y
+  // Washington como dos sugerencias. Gana la forma ya usada en una compra: es
+  // la que alguien escribió de verdad.
+  const porClave = new Map<string, string>();
+  for (const u of usadas) {
+    if (u.plazaLugar) porClave.set(normalizarNombre(u.plazaLugar), u.plazaLugar);
+  }
+  for (const p of PLAZAS_SUGERIDAS) {
+    const clave = normalizarNombre(p);
+    if (!porClave.has(clave)) porClave.set(clave, p);
+  }
+  const plazas = [...porClave.values()].sort((a, b) => a.localeCompare(b, "es"));
 
   return (
     <main style={{ maxWidth: 1220, margin: "0 auto", padding: 28 }}>

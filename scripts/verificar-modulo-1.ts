@@ -11,10 +11,36 @@
  *
  * Correr:  npx tsx scripts/verificar-modulo-1.ts
  */
+import { createRequire } from "node:module";
+
 import { config as loadEnv } from "dotenv";
 
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
+
+/**
+ * Neutraliza `server-only` PARA ESTE SCRIPT.
+ *
+ * `src/lib/entidades.ts` lleva esa guarda a propósito: hace fallar el build si
+ * un componente de cliente lo importa. Pero el paquete tira al cargarse desde
+ * cualquier runtime que no sea el de React Server Components, y este script
+ * existe justamente para ejercitar esa lógica sin navegador.
+ *
+ * En vez de sacar la guarda del código de la app —quitar una verificación de
+ * compilación para que pase un test es la dirección equivocada del trade— se
+ * intercepta la resolución del módulo acá, en el único lugar que la necesita.
+ * Tiene que correr ANTES de cualquier import dinámico de la app; por eso los
+ * imports de `main()` son `await import(...)` y no estáticos.
+ */
+const requiere = createRequire(import.meta.url);
+const cargador = requiere("node:module") as {
+  _resolveFilename: (pedido: string, ...resto: unknown[]) => string;
+};
+const resolverOriginal = cargador._resolveFilename;
+cargador._resolveFilename = function (pedido: string, ...resto: unknown[]) {
+  if (pedido === "server-only") return requiere.resolve("./sin-guarda.cjs");
+  return resolverOriginal.call(this, pedido, ...resto);
+};
 
 let ok = 0;
 let mal = 0;
