@@ -44,6 +44,18 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
     actualizadoEn: c.actualizadoEn.toISOString(),
   };
 
+  /*
+   * EL ID ES UN IDENTIFICADOR, NO UN CONTADOR.
+   *
+   * Sale de una secuencia de Postgres, y una secuencia entrega números aunque
+   * el INSERT después falle: un rechazo de validación, una constraint que salta
+   * o una transacción abortada consumen su número igual. Van a aparecer huecos,
+   * y no son un error ni un dato perdido.
+   *
+   * Leer «#47» como «llevamos 47 compras» es sacar un número inventado — y esta
+   * pantalla lo muestra grande, así que la confusión es fácil. Para contar
+   * compras se cuentan las filas, que es lo que hace el «N cargadas» de la lista.
+   */
   const [a, m, d] = compra.fecha.split("-");
 
   return (

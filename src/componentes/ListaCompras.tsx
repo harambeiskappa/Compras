@@ -13,6 +13,18 @@ export type FilaCompra = {
   plaza: string | null;
 };
 
+/*
+ * EL ID ES UN IDENTIFICADOR, NO UN CONTADOR.
+ *
+ * Sale de una secuencia de Postgres, y una secuencia entrega números aunque el
+ * INSERT después falle: un rechazo de validación, una constraint que salta o
+ * una transacción abortada consumen su número igual. Van a aparecer huecos, y
+ * no son un error ni un dato perdido.
+ *
+ * Leer «#47» como «llevamos 47 compras» es sacar un número inventado — y el
+ * diseño lo muestra grande, así que la confusión es fácil. Para contar compras
+ * se cuentan las filas, que es lo que hace el «N cargadas» del encabezado.
+ */
 const COLUMNAS = "112px 1.35fr 1.25fr 1.4fr 1fr 84px";
 
 export function ListaCompras({
