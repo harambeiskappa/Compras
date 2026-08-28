@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Compras · Módulo 1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f6f3ec; }
+  * { text-wrap: pretty; }
+  a { color: #2f5d3a; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: #a84a20; }
+  button { font-family: 'IBM Plex Sans', sans-serif; }
+  input, textarea { font-family: 'IBM Plex Sans', sans-serif; }
+  input::placeholder, textarea::placeholder { color: #a8a294; }
+  @keyframes entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#f6f3ec;color:#17150f;font:400 15px/1.5 'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased">
+
+  <div style="position:sticky;top:0;z-index:40;background:#17150f;color:#f2eee4;border-bottom:1px solid #000">
+    <div style="max-width:1220px;margin:0 auto;padding:0 28px;height:52px;display:flex;align-items:center;gap:20px">
+      <button onClick="{{ irRaiz }}" style="display:flex;align-items:baseline;gap:9px;background:transparent;border:0;padding:0;cursor:pointer;color:#f2eee4">
+        <span style="font:600 14px/1 'IBM Plex Mono',monospace;letter-spacing:.14em">COMPRAS</span>
+        <span style="font:400 11px/1 'IBM Plex Mono',monospace;color:#8d8574">HACIENDA</span>
+      </button>
+      <div style="width:1px;height:20px;background:#3a352a"></div>
+      <div style="font:400 13px/1 'IBM Plex Mono',monospace;color:#c8c0ad">{{ ruta }}</div>
+      <div style="flex:1"></div>
+      <button onClick="{{ irLista }}" style="background:transparent;border:0;padding:6px 2px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#c8c0ad" style-hover="color:#f2eee4">Compras</button>
+      <button onClick="{{ irNueva }}" style="padding:7px 14px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#17150f;background:#e5dfd0;border:1px solid #e5dfd0;border-radius:2px" style-hover="background:#fff">Registrar una compra</button>
+      <button onClick="{{ togglePanel }}" style="padding:7px 12px;cursor:pointer;font:500 12px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#c8c0ad;background:transparent;border:1px solid #3a352a;border-radius:2px" style-hover="color:#f2eee4;border-color:#6b6455">VARIANTES</button>
+    </div>
+  </div>
+
+  <sc-if value="{{ panelAbierto }}" hint-placeholder-val="{{ false }}">
+    <div style="background:#eae5d8;border-bottom:1px solid #d5cdb9">
+      <div style="max-width:1220px;margin:0 auto;padding:18px 28px 20px;display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start">
+        <div style="max-width:190px">
+          <div style="font:600 12px/1.2 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#17150f">CUATRO DECISIONES ABIERTAS</div>
+          <div style="margin-top:6px;font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a">Están construidas las dos versiones de cada una. Cambialas y comparalas en vivo.</div>
+        </div>
+        <div style="display:grid;gap:7px">
+          <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">LA LISTA</div>
+          <div style="display:flex;gap:0">
+            <button onClick="{{ setVistaTabla }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-right:0;border-radius:2px 0 0 2px;background:{{ bgTabla }};color:{{ fgTabla }}">Tabla</button>
+            <button onClick="{{ setVistaTarjetas }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-radius:0 2px 2px 0;background:{{ bgTarjetas }};color:{{ fgTarjetas }}">Tarjetas</button>
+          </div>
+        </div>
+        <div style="display:grid;gap:7px">
+          <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">EL ALTA</div>
+          <div style="display:flex;gap:0">
+            <button onClick="{{ setAltaLargo }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-right:0;border-radius:2px 0 0 2px;background:{{ bgLargo }};color:{{ fgLargo }}">Una sola hoja</button>
+            <button onClick="{{ setAltaPasos }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-radius:0 2px 2px 0;background:{{ bgPasos }};color:{{ fgPasos }}">Por pasos</button>
+          </div>
+        </div>
+        <div style="display:grid;gap:7px">
+          <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">LOS CUATRO ROLES</div>
+          <div style="display:flex;gap:0">
+            <button onClick="{{ setRolesFichas }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-right:0;border-radius:2px 0 0 2px;background:{{ bgFichas }};color:{{ fgFichas }}">Fichas</button>
+            <button onClick="{{ setRolesLibro }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-radius:0 2px 2px 0;background:{{ bgLibro }};color:{{ fgLibro }}">Renglones</button>
+          </div>
+        </div>
+        <div style="display:grid;gap:7px">
+          <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">PONER «S/D»</div>
+          <div style="display:flex;gap:0">
+            <button onClick="{{ setSdSello }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-right:0;border-radius:2px 0 0 2px;background:{{ bgSello }};color:{{ fgSello }}">Botón al lado</button>
+            <button onClick="{{ setSdInterruptor }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-radius:0 2px 2px 0;background:{{ bgInterruptor }};color:{{ fgInterruptor }}">«No se sabe»</button>
+          </div>
+        </div>
+        <div style="display:grid;gap:7px">
+          <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">ESTADO DE LA BASE</div>
+          <div style="display:flex;gap:0">
+            <button onClick="{{ setConDatos }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-right:0;border-radius:2px 0 0 2px;background:{{ bgConDatos }};color:{{ fgConDatos }}">Con compras</button>
+            <button onClick="{{ setSinDatos }}" style="padding:7px 13px;cursor:pointer;font:500 13px 'IBM Plex Sans';border:1px solid #b9b1a0;border-radius:0 2px 2px 0;background:{{ bgSinDatos }};color:{{ fgSinDatos }}">Vacía (hoy)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hayToast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:14px;padding:12px 16px;background:#17150f;color:#f2eee4;border-radius:2px;box-shadow:0 12px 32px rgba(23,21,15,.22);animation:entra .18s ease-out">
+      <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;max-width:520px">{{ toast }}</span>
+      <button onClick="{{ cerrarToast }}" style="background:transparent;border:0;color:#8d8574;cursor:pointer;font:500 12px 'IBM Plex Mono',monospace">CERRAR</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ esVacio }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Lista vacía" style="max-width:1220px;margin:0 auto;padding:28px">
+      <div style="display:flex;align-items:baseline;gap:14px;padding-bottom:16px;border-bottom:2px solid #17150f">
+        <h1 style="margin:0;font:600 26px/1.1 'IBM Plex Sans',sans-serif;letter-spacing:-.01em">Compras</h1>
+        <span style="font:400 13px/1 'IBM Plex Mono',monospace;color:#6d675a">0 cargadas</span>
+      </div>
+      <div style="margin-top:64px;max-width:620px">
+        <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#a8a294">TODAVÍA NO HAY NINGUNA</div>
+        <h2 style="margin:16px 0 0;font:600 30px/1.2 'IBM Plex Sans',sans-serif;letter-spacing:-.015em;max-width:15em">Acá van a aparecer las compras a medida que se carguen.</h2>
+        <p style="margin:18px 0 0;font:400 16px/1.6 'IBM Plex Sans',sans-serif;color:#4a453a">Una compra guarda cuándo y dónde se compró, quién consignó, cuál de nuestras empresas la registra y de quién era la hacienda. Las cabezas, los kilos y las jaulas se cargan después, en la compra propiamente dicha.</p>
+        <div style="margin-top:30px;display:flex;align-items:center;gap:16px">
+          <button onClick="{{ irNueva }}" style="padding:12px 22px;cursor:pointer;font:500 15px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px" style-hover="background:#24482d">Registrar la primera compra</button>
+          <button onClick="{{ setConDatos }}" style="padding:12px 6px;cursor:pointer;font:400 14px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:0;text-decoration:underline;text-underline-offset:3px">Ver la lista con compras cargadas</button>
+        </div>
+        <div style="margin-top:56px;padding-top:20px;border-top:1px solid #dcd6c7;font:400 14px/1.6 'IBM Plex Sans',sans-serif;color:#6d675a;max-width:44em">Del año pasado hay 120 compras en planillas de Excel. No se cargan solas ni se importan desde acá: entran cuando alguien las carga, o cuando se decida traerlas, que es otra conversación.</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ esLista }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Lista de compras" style="max-width:1220px;margin:0 auto;padding:28px">
+      <div style="display:flex;align-items:flex-end;gap:18px;padding-bottom:16px;border-bottom:2px solid #17150f;flex-wrap:wrap">
+        <div style="display:flex;align-items:baseline;gap:14px">
+          <h1 style="margin:0;font:600 26px/1.1 'IBM Plex Sans',sans-serif;letter-spacing:-.01em">Compras</h1>
+          <span style="font:400 13px/1 'IBM Plex Mono',monospace;color:#6d675a">{{ conteo }}</span>
+        </div>
+        <div style="flex:1"></div>
+        <sc-if value="{{ hayAvisos }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ irAviso }}" style="display:flex;align-items:center;gap:9px;padding:7px 12px;cursor:pointer;background:#f7ece5;border:1px solid #e0bda7;border-radius:2px" style-hover="border-color:#a84a20">
+            <span style="width:7px;height:7px;border-radius:50%;background:#a84a20"></span>
+            <span style="font:500 13px 'IBM Plex Sans',sans-serif;color:#8a3c19">{{ textoAvisos }}</span>
+          </button>
+        </sc-if>
+        <input value="{{ busqueda }}" onChange="{{ setBusqueda }}" placeholder="Buscar consignatario, empresa, origen o plaza" style="width:330px;box-sizing:border-box;padding:9px 12px;font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f;background:#fffefb;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a;box-shadow:0 0 0 3px rgba(47,93,58,.12)" />
+      </div>
+
+      <div style="margin-top:10px;font:400 13px/1.5 'IBM Plex Sans',sans-serif;color:#8a8375">Cabezas y kilos son de la compra, no de este paso: todavía no existen, así que no hay columna esperándolos.</div>
+
+      <sc-if value="{{ verTabla }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:22px">
+          <sc-if value="{{ haySinFecha }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:baseline;gap:12px;padding:0 12px 8px">
+              <span style="font:600 12px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#8a8375">SIN FECHA · {{ nSinFecha }} · NO SE PUEDEN CARGAR ASÍ</span>
+              <span style="font:400 13px 'IBM Plex Sans',sans-serif;color:#8a8375">La fecha es obligatoria: esto no se puede crear desde la app. Si alguna vez aparece — un traspaso de planilla, un dato que se rompió —, la lista la muestra acá arriba en vez de perderla al final del orden.</span>
+            </div>
+            <sc-for list="{{ sinFecha }}" as="f" hint-placeholder-count="2">
+              <div onClick="{{ f.abrir }}" style="display:grid;grid-template-columns:112px 1.35fr 1.25fr 1.4fr 1fr 84px;gap:16px;align-items:center;padding:13px 12px;background:#f2ede0;border-top:1px solid #dcd6c7;cursor:pointer" style-hover="background:#eae5d8">
+                <div style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#e9e3d4 0 5px,#f2ede0 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</div>
+                <div style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#e9e3d4 0 5px,#f2ede0 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</div>
+                <div style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#e9e3d4 0 5px,#f2ede0 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</div>
+                <div style="min-width:0">
+                  <sc-if value="{{ f.vendedorHay }}" hint-placeholder-val="{{ true }}"><span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#6d675a">{{ f.vendedor }}</span></sc-if>
+                  <sc-if value="{{ f.vendedorSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#e9e3d4 0 5px,#f2ede0 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</span></sc-if>
+                </div>
+                <div style="min-width:0">
+                  <sc-if value="{{ f.plazaHay }}" hint-placeholder-val="{{ true }}"><span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#6d675a">{{ f.plaza }}</span></sc-if>
+                  <sc-if value="{{ f.plazaSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#e9e3d4 0 5px,#f2ede0 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</span></sc-if>
+                </div>
+                <div style="text-align:right;font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294">#{{ f.id }}</div>
+              </div>
+            </sc-for>
+            <div style="height:26px"></div>
+          </sc-if>
+
+          <div style="display:grid;grid-template-columns:112px 1.35fr 1.25fr 1.4fr 1fr 84px;gap:16px;padding:0 12px 9px;border-bottom:1px solid #17150f">
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#17150f">FECHA</div>
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#17150f">CONSIGNATARIO</div>
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#17150f">EMPRESA TITULAR</div>
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#17150f">VENDEDOR / ORIGEN</div>
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#17150f">PLAZA</div>
+            <div></div>
+          </div>
+          <sc-for list="{{ conFecha }}" as="f" hint-placeholder-count="8">
+            <div onClick="{{ f.abrir }}" style="display:grid;grid-template-columns:112px 1.35fr 1.25fr 1.4fr 1fr 84px;gap:16px;align-items:center;padding:13px 12px;border-bottom:1px solid #e4dfd1;cursor:pointer;background:#fffefb" style-hover="background:#f2ede0">
+              <div style="font:500 14px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;color:#17150f">{{ f.fechaTxt }}</div>
+              <div style="font:500 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f;display:flex;align-items:center;gap:9px">
+                <span>{{ f.consignatario }}</span>
+                <sc-if value="{{ f.tieneAviso }}" hint-placeholder-val="{{ false }}"><span title="Tiene un aviso" style="width:7px;height:7px;border-radius:50%;background:#a84a20;flex:none"></span></sc-if>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                <span style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.04em;color:#3c5c46;background:#e6ede6;border:1px solid #cbd9cd;padding:4px 6px;border-radius:2px;flex:none">{{ f.empresaCod }}</span>
+                <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#4a453a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.empresa }}</span>
+              </div>
+              <div style="min-width:0">
+                <sc-if value="{{ f.vendedorHay }}" hint-placeholder-val="{{ true }}"><span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#4a453a">{{ f.vendedor }}</span></sc-if>
+                <sc-if value="{{ f.vendedorSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</span></sc-if>
+              </div>
+              <div style="min-width:0">
+                <sc-if value="{{ f.plazaHay }}" hint-placeholder-val="{{ true }}"><span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#4a453a">{{ f.plaza }}</span></sc-if>
+                <sc-if value="{{ f.plazaSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</span></sc-if>
+              </div>
+              <div style="text-align:right;font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294">#{{ f.id }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ verTarjetas }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:22px;display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px">
+          <sc-for list="{{ filas }}" as="f" hint-placeholder-count="6">
+            <div onClick="{{ f.abrir }}" style="padding:16px 17px 15px;background:#fffefb;border:1px solid #dcd6c7;border-top:3px solid #17150f;border-radius:2px;cursor:pointer;display:grid;gap:13px" style-hover="border-color:#b9b1a0;box-shadow:0 2px 0 #e4dfd1">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div>
+                  <sc-if value="{{ f.fechaHay }}" hint-placeholder-val="{{ true }}"><div style="font:500 20px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums">{{ f.fechaTxt }}</div></sc-if>
+                  <sc-if value="{{ f.fechaSd }}" hint-placeholder-val="{{ false }}"><div style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:6px 9px;border-radius:2px">s/d · sin fecha</div></sc-if>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <sc-if value="{{ f.tieneAviso }}" hint-placeholder-val="{{ false }}"><span style="width:7px;height:7px;border-radius:50%;background:#a84a20"></span></sc-if>
+                  <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294">#{{ f.id }}</span>
+                </div>
+              </div>
+              <div style="display:grid;gap:9px">
+                <div>
+                  <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">CONSIGNATARIO</div>
+                  <div style="margin-top:4px">
+                    <sc-if value="{{ f.consignatarioHay }}" hint-placeholder-val="{{ true }}"><span style="font:500 15px/1.3 'IBM Plex Sans',sans-serif">{{ f.consignatario }}</span></sc-if>
+                    <sc-if value="{{ f.consignatarioSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:6px 9px;border-radius:2px">s/d</span></sc-if>
+                  </div>
+                </div>
+                <div>
+                  <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">EMPRESA TITULAR</div>
+                  <div style="margin-top:4px;display:flex;align-items:center;gap:8px">
+                    <sc-if value="{{ f.empresaHay }}" hint-placeholder-val="{{ true }}">
+                      <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#3c5c46;background:#e6ede6;border:1px solid #cbd9cd;padding:4px 6px;border-radius:2px">{{ f.empresaCod }}</span>
+                      <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#4a453a">{{ f.empresa }}</span>
+                    </sc-if>
+                    <sc-if value="{{ f.empresaSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:6px 9px;border-radius:2px">s/d</span></sc-if>
+                  </div>
+                </div>
+                <div style="display:flex;gap:22px;padding-top:10px;border-top:1px solid #e4dfd1">
+                  <div style="min-width:0">
+                    <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">VENDEDOR / ORIGEN</div>
+                    <div style="margin-top:4px">
+                      <sc-if value="{{ f.vendedorHay }}" hint-placeholder-val="{{ true }}"><span style="font:400 13px/1.3 'IBM Plex Sans',sans-serif;color:#4a453a">{{ f.vendedor }}</span></sc-if>
+                      <sc-if value="{{ f.vendedorSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</span></sc-if>
+                    </div>
+                  </div>
+                  <div style="min-width:0">
+                    <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">PLAZA</div>
+                    <div style="margin-top:4px">
+                      <sc-if value="{{ f.plazaHay }}" hint-placeholder-val="{{ true }}"><span style="font:400 13px/1.3 'IBM Plex Sans',sans-serif;color:#4a453a">{{ f.plaza }}</span></sc-if>
+                      <sc-if value="{{ f.plazaSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:5px 8px;border-radius:2px">s/d</span></sc-if>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sinResultados }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:40px;padding:22px;background:#fffefb;border:1px dashed #cfc8b8;border-radius:2px;max-width:560px">
+          <div style="font:500 15px/1.4 'IBM Plex Sans',sans-serif">Ninguna compra coincide con «{{ busqueda }}».</div>
+          <div style="margin-top:6px;font:400 14px/1.5 'IBM Plex Sans',sans-serif;color:#6d675a">Se busca en consignatario, empresa titular, vendedor/origen y plaza. Las que tienen ese dato en s/d no pueden coincidir.</div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ esNueva }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Registrar una compra" style="max-width:1220px;margin:0 auto;padding:28px">
+      <div style="display:flex;align-items:flex-end;gap:18px;padding-bottom:16px;border-bottom:2px solid #17150f">
+        <div>
+          <button onClick="{{ irLista }}" style="background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Mono',monospace;color:#6d675a" style-hover="color:#17150f">← Compras</button>
+          <h1 style="margin:6px 0 0;font:600 26px/1.1 'IBM Plex Sans',sans-serif;letter-spacing:-.01em">Registrar una compra</h1>
+        </div>
+        <div style="flex:1"></div>
+        <div style="font:400 13px/1.4 'IBM Plex Mono',monospace;color:#6d675a;text-align:right">{{ obligatoriosTexto }}</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:52px;align-items:start;margin-top:26px">
+        <div style="display:grid;gap:34px">
+
+          <sc-if value="{{ verPasos }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:0;border:1px solid #dcd6c7;background:#fffefb;border-radius:2px;overflow:hidden">
+              <sc-for list="{{ pasos }}" as="p" hint-placeholder-count="3">
+                <div style="flex:1;padding:12px 15px;border-left:1px solid #dcd6c7;background:{{ p.bg }}">
+                  <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;color:{{ p.fgTag }}">{{ p.tag }}</div>
+                  <div style="margin-top:6px;font:500 14px/1.3 'IBM Plex Sans',sans-serif;color:{{ p.fg }}">{{ p.titulo }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ verBloque1 }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;gap:20px">
+              <div style="padding-bottom:9px;border-bottom:1px solid #17150f">
+                <div style="font:600 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em">LO QUE NO PUEDE FALTAR</div>
+                <div style="margin-top:7px;font:400 14px/1.5 'IBM Plex Sans',sans-serif;color:#6d675a">Tres datos. Con estos tres la compra existe y se puede guardar; todo lo demás se completa cuando se sepa.</div>
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:260px">
+                <label for="fecha" style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Fecha <span style="color:#a84a20">·</span></label>
+                <input id="fecha" type="date" value="{{ form.fecha }}" onChange="{{ set.fecha }}" style="width:100%;box-sizing:border-box;padding:9px 11px;font:500 14px/1.3 'IBM Plex Mono',monospace;color:#17150f;background:#fffefb;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a;box-shadow:0 0 0 3px rgba(47,93,58,.12)" />
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:520px;position:relative">
+                <label style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Consignatario <span style="color:#a84a20">·</span></label>
+                <div style="font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a">Quien remató o intermedió la venta. También existe en la compra directa, así que va siempre.</div>
+                <button onClick="{{ abrir.consignatario }}" style="width:100%;text-align:left;padding:9px 11px;cursor:pointer;font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:{{ colorConsignatario }};background:#fffefb;border:1px solid #cfc8b8;border-radius:2px" style-hover="border-color:#b9b1a0">{{ textoConsignatario }}</button>
+                <sc-if value="{{ abierto.consignatario }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:100%;left:0;right:0;z-index:30;margin-top:4px;background:#fffefb;border:1px solid #b9b1a0;border-radius:2px;box-shadow:0 14px 30px rgba(23,21,15,.14)">
+                    <div style="padding:9px 10px;border-bottom:1px solid #e4dfd1">
+                      <input value="{{ comboBusqueda }}" onChange="{{ setComboBusqueda }}" placeholder="Escribir para buscar o crear" style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                      <div style="margin-top:8px;font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">Ordenados por cuántas compras tienen. Alfabético enterraría al que concentra la mitad.</div>
+                    </div>
+                    <div style="max-height:250px;overflow:auto">
+                      <sc-for list="{{ opciones }}" as="o" hint-placeholder-count="5">
+                        <button onClick="{{ o.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:10px 12px;cursor:pointer;background:transparent;border:0;border-bottom:1px solid #f0ece1" style-hover="background:#f2ede0">
+                          <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f">{{ o.nombre }}</span>
+                          <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294;flex:none">{{ o.meta }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ hayParecido }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px;background:#fdf3ec;border-top:1px solid #e0bda7">
+                        <div style="font:500 13px/1.45 'IBM Plex Sans',sans-serif;color:#8a3c19">Ya hay uno que se escribe casi igual: cambia un punto o una abreviatura. Si es el mismo, elegí el que ya está.</div>
+                        <div style="margin-top:9px;display:grid;gap:6px">
+                          <sc-for list="{{ parecidos }}" as="p" hint-placeholder-count="1">
+                            <button onClick="{{ p.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:9px 11px;cursor:pointer;background:#fffefb;border:1px solid #a84a20;border-radius:2px;font:500 14px 'IBM Plex Sans',sans-serif;color:#17150f" style-hover="background:#f7ece5">
+                              <span>{{ p.nombre }}</span>
+                              <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a84a20;flex:none">{{ p.diferencia }}</span>
+                            </button>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ crearPrimario }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ empezarCreacion }}" style="width:100%;text-align:left;padding:11px 12px;cursor:pointer;background:#e6ede6;border:0;border-top:1px solid #cbd9cd;font:500 14px 'IBM Plex Sans',sans-serif;color:#2f5d3a">＋ No hay ninguno así. Crear «{{ comboBusqueda }}» y elegirlo</button>
+                    </sc-if>
+                    <sc-if value="{{ crearSecundario }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:9px 12px;background:#faf7f0;border-top:1px solid #e4dfd1;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                        <span style="font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">{{ textoCandidatos }}</span>
+                        <button onClick="{{ empezarCreacion }}" style="flex:none;padding:5px 10px;cursor:pointer;background:transparent;border:1px solid #cfc8b8;border-radius:2px;font:400 12px 'IBM Plex Sans',sans-serif;color:#6d675a" style-hover="border-color:#6d675a;color:#17150f">crear uno nuevo</button>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ creando }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:13px;background:#f2ede0;border-top:1px solid #dcd6c7;display:grid;gap:10px">
+                        <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">NUEVO {{ tituloCreando }}</div>
+                        <input value="{{ nombreNuevo }}" onChange="{{ setNombreNuevo }}" style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                        <div style="display:flex;gap:8px;align-items:center">
+                          <button onClick="{{ confirmarCreacion }}" style="padding:8px 14px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px">Crear y elegir</button>
+                          <button onClick="{{ cancelarCreacion }}" style="padding:8px 12px;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Cancelar</button>
+                          <span style="font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">Queda en el catálogo para la próxima.</span>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:520px;position:relative">
+                <label style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Empresa titular <span style="color:#a84a20">·</span></label>
+                <div style="font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a">Bajo cuál de nuestras empresas se registra la compra.</div>
+                <button onClick="{{ abrir.empresa }}" style="width:100%;text-align:left;padding:9px 11px;cursor:pointer;font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:{{ colorEmpresa }};background:#fffefb;border:1px solid #cfc8b8;border-radius:2px" style-hover="border-color:#b9b1a0">{{ textoEmpresa }}</button>
+                <sc-if value="{{ abierto.empresa }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:100%;left:0;right:0;z-index:30;margin-top:4px;background:#fffefb;border:1px solid #b9b1a0;border-radius:2px;box-shadow:0 14px 30px rgba(23,21,15,.14)">
+                    <div style="max-height:280px;overflow:auto">
+                      <sc-for list="{{ opciones }}" as="o" hint-placeholder-count="7">
+                        <button onClick="{{ o.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:10px 12px;cursor:pointer;background:transparent;border:0;border-bottom:1px solid #f0ece1" style-hover="background:#f2ede0">
+                          <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f">{{ o.nombre }}</span>
+                          <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294;flex:none">{{ o.meta }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                    <div style="padding:11px 12px;background:#f2ede0;border-top:1px solid #dcd6c7;font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a">Acá aparecen solo las nuestras, y no se pueden crear desde este paso: son nuestras empresas y darlas de alta es una decisión, no un descuido.</div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ verBloque2 }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;gap:20px">
+              <div style="padding-bottom:9px;border-bottom:1px solid #17150f">
+                <div style="font:600 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em">VENDEDOR, HOTELERO Y PERSONA COMPRADORA</div>
+                <div style="margin-top:7px;font:400 14px/1.5 'IBM Plex Sans',sans-serif;color:#6d675a">Tres cosas distintas y ninguna obligatoria. Si no se sabe, va en s/d y se completa después.</div>
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:520px;position:relative;border-left:3px solid #8a5a12;padding-left:15px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                  <label style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Vendedor / origen</label>
+                  <sc-if value="{{ sdInterruptor }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ poner.vendedor }}" style="display:flex;align-items:center;gap:7px;background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a">
+                      <span style="width:14px;height:14px;border:1px solid #a8a294;border-radius:2px;background:{{ marca.vendedor }}"></span> no se sabe
+                    </button>
+                  </sc-if>
+                </div>
+                <div style="font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a">De quién era la hacienda.</div>
+                <sc-if value="{{ sd.vendedor }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span style="display:inline-flex;align-items:center;font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:9px 12px;border-radius:2px">s/d</span>
+                    <button onClick="{{ quitar.vendedor }}" style="background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#2f5d3a;text-decoration:underline;text-underline-offset:3px">Sé el dato, lo cargo</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ noSd.vendedor }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:7px">
+                    <button onClick="{{ abrir.vendedor }}" style="flex:1;text-align:left;padding:9px 11px;cursor:pointer;font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:{{ colorVendedor }};background:#fffefb;border:1px solid #cfc8b8;border-radius:2px" style-hover="border-color:#b9b1a0">{{ textoVendedor }}</button>
+                    <sc-if value="{{ sdSello }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ poner.vendedor }}" style="flex:none;padding:0 13px;cursor:pointer;font:500 13px 'IBM Plex Mono',monospace;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;border-radius:2px" style-hover="color:#17150f;border-color:#8a8375">s/d</button>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ abierto.vendedor }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:100%;left:15px;right:0;z-index:30;margin-top:4px;background:#fffefb;border:1px solid #b9b1a0;border-radius:2px;box-shadow:0 14px 30px rgba(23,21,15,.14)">
+                    <div style="padding:9px 10px;border-bottom:1px solid #e4dfd1">
+                      <input value="{{ comboBusqueda }}" onChange="{{ setComboBusqueda }}" placeholder="Escribir para buscar o crear" style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                      <div style="margin-top:8px;font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">Es el catálogo que más crece. Si el vendedor no está, se crea acá sin salir.</div>
+                    </div>
+                    <div style="max-height:230px;overflow:auto">
+                      <sc-for list="{{ opciones }}" as="o" hint-placeholder-count="5">
+                        <button onClick="{{ o.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:10px 12px;cursor:pointer;background:transparent;border:0;border-bottom:1px solid #f0ece1" style-hover="background:#f2ede0">
+                          <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f">{{ o.nombre }}</span>
+                          <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294;flex:none">{{ o.meta }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ hayParecido }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px;background:#fdf3ec;border-top:1px solid #e0bda7">
+                        <div style="font:500 13px/1.45 'IBM Plex Sans',sans-serif;color:#8a3c19">Ya hay uno que se escribe casi igual: cambia un punto o una abreviatura. Si es el mismo, elegí el que ya está.</div>
+                        <div style="margin-top:9px;display:grid;gap:6px">
+                          <sc-for list="{{ parecidos }}" as="p" hint-placeholder-count="1">
+                            <button onClick="{{ p.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:9px 11px;cursor:pointer;background:#fffefb;border:1px solid #a84a20;border-radius:2px;font:500 14px 'IBM Plex Sans',sans-serif;color:#17150f" style-hover="background:#f7ece5">
+                              <span>{{ p.nombre }}</span>
+                              <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a84a20;flex:none">{{ p.diferencia }}</span>
+                            </button>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ crearPrimario }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ empezarCreacion }}" style="width:100%;text-align:left;padding:11px 12px;cursor:pointer;background:#e6ede6;border:0;border-top:1px solid #cbd9cd;font:500 14px 'IBM Plex Sans',sans-serif;color:#2f5d3a">＋ No hay ninguno así. Crear «{{ comboBusqueda }}» y elegirlo</button>
+                    </sc-if>
+                    <sc-if value="{{ crearSecundario }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:9px 12px;background:#faf7f0;border-top:1px solid #e4dfd1;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                        <span style="font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">{{ textoCandidatos }}</span>
+                        <button onClick="{{ empezarCreacion }}" style="flex:none;padding:5px 10px;cursor:pointer;background:transparent;border:1px solid #cfc8b8;border-radius:2px;font:400 12px 'IBM Plex Sans',sans-serif;color:#6d675a" style-hover="border-color:#6d675a;color:#17150f">crear uno nuevo</button>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ creando }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:13px;background:#f2ede0;border-top:1px solid #dcd6c7;display:grid;gap:10px">
+                        <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">NUEVO {{ tituloCreando }}</div>
+                        <input value="{{ nombreNuevo }}" onChange="{{ setNombreNuevo }}" style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                        <div style="display:flex;gap:8px;align-items:center">
+                          <button onClick="{{ confirmarCreacion }}" style="padding:8px 14px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px">Crear y elegir</button>
+                          <button onClick="{{ cancelarCreacion }}" style="padding:8px 12px;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Cancelar</button>
+                          <span style="font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">Nombre y nada más. El resto se completa cuando haga falta.</span>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:520px;position:relative;border-left:3px solid #6b3f7a;padding-left:15px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                  <label style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Hotelero</label>
+                  <sc-if value="{{ sdInterruptor }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ poner.hotelero }}" style="display:flex;align-items:center;gap:7px;background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a">
+                      <span style="width:14px;height:14px;border:1px solid #a8a294;border-radius:2px;background:{{ marca.hotelero }}"></span> no se sabe
+                    </button>
+                  </sc-if>
+                </div>
+                <div style="font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a">De quién es la hacienda una vez en el feedlot. Puede ser de un tercero.</div>
+                <sc-if value="{{ sd.hotelero }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span style="display:inline-flex;align-items:center;font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:9px 12px;border-radius:2px">s/d</span>
+                    <button onClick="{{ quitar.hotelero }}" style="background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#2f5d3a;text-decoration:underline;text-underline-offset:3px">Sé el dato, lo cargo</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ noSd.hotelero }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:7px">
+                    <button onClick="{{ abrir.hotelero }}" style="flex:1;text-align:left;padding:9px 11px;cursor:pointer;font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:{{ colorHotelero }};background:#fffefb;border:1px solid #cfc8b8;border-radius:2px" style-hover="border-color:#b9b1a0">{{ textoHotelero }}</button>
+                    <sc-if value="{{ sdSello }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ poner.hotelero }}" style="flex:none;padding:0 13px;cursor:pointer;font:500 13px 'IBM Plex Mono',monospace;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;border-radius:2px" style-hover="color:#17150f;border-color:#8a8375">s/d</button>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ abierto.hotelero }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:100%;left:15px;right:0;z-index:30;margin-top:4px;background:#fffefb;border:1px solid #b9b1a0;border-radius:2px;box-shadow:0 14px 30px rgba(23,21,15,.14)">
+                    <div style="padding:9px 10px;border-bottom:1px solid #e4dfd1">
+                      <input value="{{ comboBusqueda }}" onChange="{{ setComboBusqueda }}" placeholder="Escribir para buscar o crear" style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                      <div style="margin-top:8px;font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">Acá aparecen todas, también las de terceros: su hacienda puede estar en nuestro feedlot.</div>
+                    </div>
+                    <div style="max-height:230px;overflow:auto">
+                      <sc-for list="{{ opciones }}" as="o" hint-placeholder-count="5">
+                        <button onClick="{{ o.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:10px 12px;cursor:pointer;background:transparent;border:0;border-bottom:1px solid #f0ece1" style-hover="background:#f2ede0">
+                          <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f">{{ o.nombre }}</span>
+                          <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294;flex:none">{{ o.meta }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ hayParecido }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px;background:#fdf3ec;border-top:1px solid #e0bda7">
+                        <div style="font:500 13px/1.45 'IBM Plex Sans',sans-serif;color:#8a3c19">Ya hay uno que se escribe casi igual: cambia un punto o una abreviatura. Si es el mismo, elegí el que ya está.</div>
+                        <div style="margin-top:9px;display:grid;gap:6px">
+                          <sc-for list="{{ parecidos }}" as="p" hint-placeholder-count="1">
+                            <button onClick="{{ p.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:9px 11px;cursor:pointer;background:#fffefb;border:1px solid #a84a20;border-radius:2px;font:500 14px 'IBM Plex Sans',sans-serif;color:#17150f" style-hover="background:#f7ece5">
+                              <span>{{ p.nombre }}</span>
+                              <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a84a20;flex:none">{{ p.diferencia }}</span>
+                            </button>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ crearPrimario }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ empezarCreacion }}" style="width:100%;text-align:left;padding:11px 12px;cursor:pointer;background:#e6ede6;border:0;border-top:1px solid #cbd9cd;font:500 14px 'IBM Plex Sans',sans-serif;color:#2f5d3a">＋ No hay ninguno así. Crear «{{ comboBusqueda }}» y elegirlo</button>
+                    </sc-if>
+                    <sc-if value="{{ crearSecundario }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:9px 12px;background:#faf7f0;border-top:1px solid #e4dfd1;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                        <span style="font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">{{ textoCandidatos }}</span>
+                        <button onClick="{{ empezarCreacion }}" style="flex:none;padding:5px 10px;cursor:pointer;background:transparent;border:1px solid #cfc8b8;border-radius:2px;font:400 12px 'IBM Plex Sans',sans-serif;color:#6d675a" style-hover="border-color:#6d675a;color:#17150f">crear uno nuevo</button>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ creando }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:13px;background:#f2ede0;border-top:1px solid #dcd6c7;display:grid;gap:10px">
+                        <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">NUEVO {{ tituloCreando }}</div>
+                        <input value="{{ nombreNuevo }}" onChange="{{ setNombreNuevo }}" style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                        <div style="display:flex;gap:8px;align-items:center">
+                          <button onClick="{{ confirmarCreacion }}" style="padding:8px 14px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px">Crear y elegir</button>
+                          <button onClick="{{ cancelarCreacion }}" style="padding:8px 12px;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Cancelar</button>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:520px;position:relative;border-left:3px solid #7a3f3f;padding-left:15px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                  <label style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Persona compradora</label>
+                  <sc-if value="{{ sdInterruptor }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ poner.persona }}" style="display:flex;align-items:center;gap:7px;background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a">
+                      <span style="width:14px;height:14px;border:1px solid #a8a294;border-radius:2px;background:{{ marca.persona }}"></span> no se sabe
+                    </button>
+                  </sc-if>
+                </div>
+                <div style="font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a">Quién fue físicamente a comprar. No es la empresa.</div>
+                <sc-if value="{{ sd.persona }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span style="display:inline-flex;align-items:center;font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:9px 12px;border-radius:2px">s/d</span>
+                    <button onClick="{{ quitar.persona }}" style="background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#2f5d3a;text-decoration:underline;text-underline-offset:3px">Sé el dato, lo cargo</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ noSd.persona }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:7px">
+                    <button onClick="{{ abrir.persona }}" style="flex:1;text-align:left;padding:9px 11px;cursor:pointer;font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:{{ colorPersona }};background:#fffefb;border:1px solid #cfc8b8;border-radius:2px" style-hover="border-color:#b9b1a0">{{ textoPersona }}</button>
+                    <sc-if value="{{ sdSello }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ poner.persona }}" style="flex:none;padding:0 13px;cursor:pointer;font:500 13px 'IBM Plex Mono',monospace;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;border-radius:2px" style-hover="color:#17150f;border-color:#8a8375">s/d</button>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ abierto.persona }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:100%;left:15px;right:0;z-index:30;margin-top:4px;background:#fffefb;border:1px solid #b9b1a0;border-radius:2px;box-shadow:0 14px 30px rgba(23,21,15,.14)">
+                    <div style="padding:9px 10px;border-bottom:1px solid #e4dfd1">
+                      <input value="{{ comboBusqueda }}" onChange="{{ setComboBusqueda }}" placeholder="Escribir el nombre" style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                    </div>
+                    <sc-if value="{{ catalogoVacio }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px;font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#8a8375">Todavía no hay ninguna cargada. La primera se crea acá y queda para las próximas.</div>
+                    </sc-if>
+                    <div style="max-height:230px;overflow:auto">
+                      <sc-for list="{{ opciones }}" as="o" hint-placeholder-count="0">
+                        <button onClick="{{ o.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:10px 12px;cursor:pointer;background:transparent;border:0;border-bottom:1px solid #f0ece1" style-hover="background:#f2ede0">
+                          <span style="font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f">{{ o.nombre }}</span>
+                          <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a8a294;flex:none">{{ o.meta }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ hayParecido }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:12px;background:#fdf3ec;border-top:1px solid #e0bda7">
+                        <div style="font:500 13px/1.45 'IBM Plex Sans',sans-serif;color:#8a3c19">Ya hay una que se escribe casi igual. Si es la misma, elegí la que ya está.</div>
+                        <div style="margin-top:9px;display:grid;gap:6px">
+                          <sc-for list="{{ parecidos }}" as="p" hint-placeholder-count="1">
+                            <button onClick="{{ p.elegir }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:9px 11px;cursor:pointer;background:#fffefb;border:1px solid #a84a20;border-radius:2px;font:500 14px 'IBM Plex Sans',sans-serif;color:#17150f" style-hover="background:#f7ece5">
+                              <span>{{ p.nombre }}</span>
+                              <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#a84a20;flex:none">{{ p.diferencia }}</span>
+                            </button>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ crearPrimario }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ empezarCreacion }}" style="width:100%;text-align:left;padding:11px 12px;cursor:pointer;background:#e6ede6;border:0;border-top:1px solid #cbd9cd;font:500 14px 'IBM Plex Sans',sans-serif;color:#2f5d3a">＋ No hay ninguna así. Crear «{{ comboBusqueda }}» y elegirla</button>
+                    </sc-if>
+                    <sc-if value="{{ crearSecundario }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:9px 12px;background:#faf7f0;border-top:1px solid #e4dfd1;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                        <span style="font:400 12px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">{{ textoCandidatos }}</span>
+                        <button onClick="{{ empezarCreacion }}" style="flex:none;padding:5px 10px;cursor:pointer;background:transparent;border:1px solid #cfc8b8;border-radius:2px;font:400 12px 'IBM Plex Sans',sans-serif;color:#6d675a" style-hover="border-color:#6d675a;color:#17150f">crear una nueva</button>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ creando }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:13px;background:#f2ede0;border-top:1px solid #dcd6c7;display:grid;gap:10px">
+                        <div style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6d675a">NUEVA {{ tituloCreando }}</div>
+                        <input value="{{ nombreNuevo }}" onChange="{{ setNombreNuevo }}" style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a" />
+                        <div style="display:flex;gap:8px;align-items:center">
+                          <button onClick="{{ confirmarCreacion }}" style="padding:8px 14px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px">Crear y elegir</button>
+                          <button onClick="{{ cancelarCreacion }}" style="padding:8px 12px;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Cancelar</button>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ verBloque3 }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;gap:20px">
+              <div style="padding-bottom:9px;border-bottom:1px solid #17150f">
+                <div style="font:600 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em">PLAZA Y OBSERVACIONES</div>
+                <div style="margin-top:7px;font:400 13px/1.5 'IBM Plex Sans',sans-serif;color:#6d675a">La comisión no está acá: se aplica por renglón y los renglones son del paso siguiente.</div>
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:400px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                  <label for="plaza" style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Plaza o lugar</label>
+                  <sc-if value="{{ sdInterruptor }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ poner.plaza }}" style="display:flex;align-items:center;gap:7px;background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a">
+                      <span style="width:14px;height:14px;border:1px solid #a8a294;border-radius:2px;background:{{ marca.plaza }}"></span> no se sabe
+                    </button>
+                  </sc-if>
+                </div>
+                <sc-if value="{{ sd.plaza }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span style="display:inline-flex;align-items:center;font:500 13px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:9px 12px;border-radius:2px">s/d</span>
+                    <button onClick="{{ quitar.plaza }}" style="background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#2f5d3a;text-decoration:underline;text-underline-offset:3px">Sé el dato, lo cargo</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ noSd.plaza }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:7px">
+                    <input id="plaza" list="plazas" value="{{ form.plaza }}" onChange="{{ set.plaza }}" placeholder="WASHINGTON, HUINCA RENANCO…" style="flex:1;box-sizing:border-box;padding:9px 11px;font:400 14px/1.3 'IBM Plex Sans',sans-serif;color:#17150f;background:#fffefb;border:1px solid #cfc8b8;border-radius:2px;outline:none" style-focus="border-color:#2f5d3a;box-shadow:0 0 0 3px rgba(47,93,58,.12)" />
+                    <datalist id="plazas">
+                      <sc-for list="{{ plazas }}" as="p" hint-placeholder-count="0">
+                        <option value="{{ p.nombre }}"></option>
+                      </sc-for>
+                    </datalist>
+                    <sc-if value="{{ sdSello }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ poner.plaza }}" style="flex:none;padding:0 13px;cursor:pointer;font:500 13px 'IBM Plex Mono',monospace;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;border-radius:2px" style-hover="color:#17150f;border-color:#8a8375">s/d</button>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="display:grid;gap:7px;max-width:520px">
+                <label for="obs" style="font:500 14px/1.2 'IBM Plex Sans',sans-serif">Observaciones</label>
+                <textarea id="obs" rows="3" value="{{ form.observaciones }}" onChange="{{ set.observaciones }}" placeholder="Lo que no entra en ningún campo" style="width:100%;box-sizing:border-box;padding:9px 11px;font:400 14px/1.5 'IBM Plex Sans',sans-serif;color:#17150f;background:#fffefb;border:1px solid #cfc8b8;border-radius:2px;outline:none;resize:vertical" style-focus="border-color:#2f5d3a;box-shadow:0 0 0 3px rgba(47,93,58,.12)"></textarea>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:center;gap:14px;padding-top:22px;border-top:2px solid #17150f;flex-wrap:wrap">
+            <sc-if value="{{ verPasos }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ pasoAnterior }}" style="padding:11px 16px;cursor:pointer;font:500 14px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Volver</button>
+            </sc-if>
+            <button onClick="{{ guardar }}" style="padding:11px 20px;cursor:pointer;font:500 15px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:{{ bgGuardar }};border:1px solid #24482d;border-radius:2px" style-hover="background:#24482d">{{ textoGuardar }}</button>
+            <sc-if value="{{ verPasos }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ guardarYSalir }}" style="padding:11px 14px;cursor:pointer;font:400 14px 'IBM Plex Sans',sans-serif;color:#2f5d3a;background:transparent;border:0;text-decoration:underline;text-underline-offset:3px">Guardar así y completar después</button>
+            </sc-if>
+            <div style="font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a;max-width:26em">{{ notaGuardar }}</div>
+          </div>
+        </div>
+
+        <div style="display:grid;gap:16px;position:sticky;top:80px">
+          <div style="padding:16px 17px;background:#fffefb;border:1px solid #dcd6c7;border-top:3px solid #17150f;border-radius:2px">
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#17150f">ASÍ VA A APARECER EN LA LISTA</div>
+            <div style="margin-top:14px;display:grid;gap:11px">
+              <div>
+                <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">FECHA</div>
+                <div style="margin-top:4px;font:500 16px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;color:{{ colorPrevFecha }}">{{ prevFecha }}</div>
+              </div>
+              <div>
+                <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">CONSIGNATARIO</div>
+                <div style="margin-top:4px;font:500 15px/1.3 'IBM Plex Sans',sans-serif;color:{{ colorPrevConsignatario }}">{{ prevConsignatario }}</div>
+              </div>
+              <div>
+                <div style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">EMPRESA TITULAR</div>
+                <div style="margin-top:4px;font:500 15px/1.3 'IBM Plex Sans',sans-serif;color:{{ colorPrevEmpresa }}">{{ prevEmpresa }}</div>
+              </div>
+            </div>
+            <div style="margin-top:15px;padding-top:13px;border-top:1px solid #e4dfd1;font:400 13px/1.5 'IBM Plex Sans',sans-serif;color:#6d675a">Son los tres datos con los que se reconoce una compra en la lista. Por eso son los tres obligatorios y no hay un cuarto.</div>
+          </div>
+          <div style="padding:14px 16px;background:#eae5d8;border:1px solid #d5cdb9;border-radius:2px;font:400 13px/1.55 'IBM Plex Sans',sans-serif;color:#4a453a">
+            <span style="font:500 13px 'IBM Plex Sans',sans-serif">Nada se completa solo.</span> Si un dato no se sabe, va en s/d y se ve como s/d. Poner un 0 o dejarlo en blanco haría que dentro de un año nadie pueda distinguir «no se sabe» de «vale cero».
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ esDetalle }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Ver y editar una compra" style="max-width:1220px;margin:0 auto;padding:28px">
+      <div style="display:flex;align-items:flex-end;gap:18px;padding-bottom:16px;border-bottom:2px solid #17150f;flex-wrap:wrap">
+        <div>
+          <button onClick="{{ irLista }}" style="background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Mono',monospace;color:#6d675a" style-hover="color:#17150f">← Compras</button>
+          <div style="margin-top:8px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap">
+            <h1 style="margin:0;font:600 26px/1.1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;letter-spacing:-.01em">{{ det.fechaTitulo }}</h1>
+            <div style="font:400 22px/1.2 'IBM Plex Sans',sans-serif;color:#4a453a">{{ det.tituloResto }}</div>
+            <span style="font:400 13px/1 'IBM Plex Mono',monospace;color:#a8a294">#{{ det.id }}</span>
+          </div>
+        </div>
+        <div style="flex:1"></div>
+        <div style="font:400 13px/1.45 'IBM Plex Sans',sans-serif;color:#6d675a;text-align:right;max-width:20em">Se ve y se edita acá mismo: se toca el dato y se cambia. No hay otra pantalla.</div>
+      </div>
+
+      <sc-if value="{{ det.avisoPendiente }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:22px;display:grid;grid-template-columns:auto 1fr;gap:0;background:#fdf3ec;border:1px solid #e0bda7;border-left:4px solid #a84a20;border-radius:2px">
+          <div style="padding:17px 0 17px 17px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#a84a20">AVISO</div>
+          <div style="padding:16px 18px">
+            <div style="font:500 16px/1.45 'IBM Plex Sans',sans-serif;color:#17150f;max-width:52em">La empresa titular (Bulltrade) no figura entre las empresas de las tropas de esta compra, que dicen PEG.</div>
+            <div style="margin-top:8px;font:400 14px/1.55 'IBM Plex Sans',sans-serif;color:#6d675a;max-width:52em">Puede ser legítimo: la empresa puede cambiar entre la compra y la liquidación. No bloquea nada y la compra ya está guardada — pero alguien tiene que decir cuál de las dos cosas es, y el aviso queda hasta que alguien lo diga.</div>
+            <div style="margin-top:15px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <button onClick="{{ det.avisoEsReal }}" style="padding:9px 15px;cursor:pointer;font:500 14px 'IBM Plex Sans',sans-serif;color:#fdf3ec;background:#a84a20;border:1px solid #8a3c19;border-radius:2px" style-hover="background:#8a3c19">Es un caso real, dejarlo así</button>
+              <button onClick="{{ det.avisoACorregir }}" style="padding:9px 15px;cursor:pointer;font:500 14px 'IBM Plex Sans',sans-serif;color:#8a3c19;background:transparent;border:1px solid #e0bda7;border-radius:2px" style-hover="border-color:#a84a20">Hay que corregirlo</button>
+              <span style="font:400 13px/1.4 'IBM Plex Sans',sans-serif;color:#a8886f">No se cierra con una cruz: se cierra eligiendo.</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ det.avisoResuelto }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:22px;display:flex;align-items:center;gap:12px;padding:11px 15px;background:#f2ede0;border:1px solid #dcd6c7;border-left:4px solid #8a8375;border-radius:2px">
+          <span style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#8a8375">AVISO CERRADO</span>
+          <span style="font:400 14px/1.4 'IBM Plex Sans',sans-serif;color:#4a453a">{{ det.avisoTexto }}</span>
+          <button onClick="{{ det.avisoReabrir }}" style="background:transparent;border:0;padding:0;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#2f5d3a;text-decoration:underline;text-underline-offset:3px">Volver a abrirlo</button>
+        </div>
+      </sc-if>
+
+      <div style="margin-top:32px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:52px;align-items:start">
+        <div style="display:grid;gap:34px">
+          <div>
+            <div style="padding-bottom:9px;border-bottom:1px solid #17150f;display:flex;align-items:baseline;justify-content:space-between;gap:14px">
+              <div style="font:600 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em">CADA ROL, SU LUGAR</div>
+              <div style="font:400 13px/1.4 'IBM Plex Sans',sans-serif;color:#8a8375">Cinco papeles distintos. Ninguno se puede leer en el lugar de otro.</div>
+            </div>
+
+            <sc-if value="{{ rolesFichas }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:14px">
+                <sc-for list="{{ det.roles }}" as="r" hint-placeholder-count="5">
+                  <div style="padding:15px 16px 16px;background:#fffefb;border:1px solid #dcd6c7;border-top:3px solid {{ r.color }};border-radius:2px;display:grid;gap:9px;align-content:start">
+                    <div style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:.12em;color:{{ r.color }}">{{ r.rotulo }}</div>
+                    <div style="font:400 12px/1.45 'IBM Plex Sans',sans-serif;color:#8a8375;min-height:2.9em">{{ r.definicion }}</div>
+                    <sc-if value="{{ r.editando }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid;gap:8px">
+                        <input value="{{ borrador }}" onChange="{{ setBorrador }}" list="{{ r.listaId }}" style="width:100%;box-sizing:border-box;padding:8px 10px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #2f5d3a;border-radius:2px;outline:none" />
+                        <datalist id="{{ r.listaId }}">
+                          <sc-for list="{{ r.catalogo }}" as="c" hint-placeholder-count="0">
+                            <option value="{{ c.nombre }}"></option>
+                          </sc-for>
+                        </datalist>
+                        <div style="display:flex;gap:7px;align-items:center">
+                          <button onClick="{{ r.guardar }}" style="padding:7px 12px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px">Guardar</button>
+                          <button onClick="{{ r.cancelar }}" style="padding:7px 10px;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Cancelar</button>
+                          <sc-if value="{{ r.opcional }}" hint-placeholder-val="{{ false }}">
+                            <button onClick="{{ r.ponerSd }}" style="padding:7px 10px;cursor:pointer;font:500 12px 'IBM Plex Mono',monospace;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;border-radius:2px">s/d</button>
+                          </sc-if>
+                          <sc-if value="{{ r.obligatorio }}" hint-placeholder-val="{{ false }}">
+                            <span style="display:inline-flex;align-items:center;gap:6px;font:400 12px/1.35 'IBM Plex Sans',sans-serif;color:#8a8375"><span style="font:600 11px/1 'IBM Plex Mono',monospace;color:#a84a20">·</span> Este dato no puede quedar en s/d: sin él la compra no se reconoce en la lista.</span>
+                          </sc-if>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ r.viendo }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ r.editar }}" style="width:100%;text-align:left;background:transparent;border:0;border-bottom:1px dotted #cfc8b8;padding:2px 0 6px;cursor:pointer" style-hover="border-bottom-color:#17150f">
+                        <sc-if value="{{ r.hay }}" hint-placeholder-val="{{ true }}"><span style="font:500 16px/1.35 'IBM Plex Sans',sans-serif;color:#17150f">{{ r.valor }}</span></sc-if>
+                        <sc-if value="{{ r.esSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:6px 9px;border-radius:2px">s/d</span></sc-if>
+                      </button>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ rolesLibro }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:6px">
+                <sc-for list="{{ det.roles }}" as="r" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:250px minmax(0,1fr);gap:24px;padding:16px 0 16px 14px;border-bottom:1px solid #e4dfd1;border-left:3px solid {{ r.color }};background:#fffefb">
+                    <div>
+                      <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:{{ r.color }}">{{ r.rotulo }}</div>
+                      <div style="margin-top:6px;font:400 12px/1.45 'IBM Plex Sans',sans-serif;color:#8a8375">{{ r.definicion }}</div>
+                    </div>
+                    <div>
+                      <sc-if value="{{ r.editando }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                          <input value="{{ borrador }}" onChange="{{ setBorrador }}" list="{{ r.listaId }}" style="width:300px;box-sizing:border-box;padding:8px 10px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #2f5d3a;border-radius:2px;outline:none" />
+                          <datalist id="{{ r.listaId }}">
+                            <sc-for list="{{ r.catalogo }}" as="c" hint-placeholder-count="0">
+                              <option value="{{ c.nombre }}"></option>
+                            </sc-for>
+                          </datalist>
+                          <button onClick="{{ r.guardar }}" style="padding:7px 12px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px">Guardar</button>
+                          <button onClick="{{ r.cancelar }}" style="padding:7px 10px;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Cancelar</button>
+                          <sc-if value="{{ r.opcional }}" hint-placeholder-val="{{ false }}">
+                            <button onClick="{{ r.ponerSd }}" style="padding:7px 10px;cursor:pointer;font:500 12px 'IBM Plex Mono',monospace;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;border-radius:2px">s/d</button>
+                          </sc-if>
+                          <sc-if value="{{ r.obligatorio }}" hint-placeholder-val="{{ false }}">
+                            <span style="display:inline-flex;align-items:center;gap:6px;font:400 12px/1.35 'IBM Plex Sans',sans-serif;color:#8a8375"><span style="font:600 11px/1 'IBM Plex Mono',monospace;color:#a84a20">·</span> Este dato no puede quedar en s/d: sin él la compra no se reconoce en la lista.</span>
+                          </sc-if>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ r.viendo }}" hint-placeholder-val="{{ true }}">
+                        <button onClick="{{ r.editar }}" style="text-align:left;background:transparent;border:0;border-bottom:1px dotted #cfc8b8;padding:2px 0 5px;cursor:pointer" style-hover="border-bottom-color:#17150f">
+                          <sc-if value="{{ r.hay }}" hint-placeholder-val="{{ true }}"><span style="font:500 17px/1.35 'IBM Plex Sans',sans-serif;color:#17150f">{{ r.valor }}</span></sc-if>
+                          <sc-if value="{{ r.esSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:6px 9px;border-radius:2px">s/d</span></sc-if>
+                        </button>
+                      </sc-if>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <div>
+            <div style="padding-bottom:9px;border-bottom:1px solid #17150f;font:600 13px/1 'IBM Plex Mono',monospace;letter-spacing:.08em">CUÁNDO, DÓNDE Y QUÉ SE ANOTÓ</div>
+            <sc-for list="{{ det.datos }}" as="d" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:250px minmax(0,1fr);gap:24px;padding:15px 0;border-bottom:1px solid #e4dfd1">
+                <div style="font:500 13px/1.4 'IBM Plex Sans',sans-serif;color:#4a453a">{{ d.rotulo }}</div>
+                <div>
+                  <sc-if value="{{ d.editando }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                      <input value="{{ borrador }}" onChange="{{ setBorrador }}" type="{{ d.tipo }}" style="width:300px;box-sizing:border-box;padding:8px 10px;font:400 14px 'IBM Plex Sans',sans-serif;border:1px solid #2f5d3a;border-radius:2px;outline:none" />
+                      <button onClick="{{ d.guardar }}" style="padding:7px 12px;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#f6f3ec;background:#2f5d3a;border:1px solid #24482d;border-radius:2px">Guardar</button>
+                      <button onClick="{{ d.cancelar }}" style="padding:7px 10px;cursor:pointer;font:400 13px 'IBM Plex Sans',sans-serif;color:#6d675a;background:transparent;border:1px solid #cfc8b8;border-radius:2px">Cancelar</button>
+                      <sc-if value="{{ d.opcional }}" hint-placeholder-val="{{ false }}">
+                        <button onClick="{{ d.ponerSd }}" style="padding:7px 10px;cursor:pointer;font:500 12px 'IBM Plex Mono',monospace;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;border-radius:2px">s/d</button>
+                      </sc-if>
+                      <sc-if value="{{ d.obligatorio }}" hint-placeholder-val="{{ false }}">
+                        <span style="display:inline-flex;align-items:center;gap:6px;font:400 12px/1.35 'IBM Plex Sans',sans-serif;color:#8a8375"><span style="font:600 11px/1 'IBM Plex Mono',monospace;color:#a84a20">·</span> Este dato no puede quedar en s/d: sin él la compra no se reconoce en la lista.</span>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ d.viendo }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ d.editar }}" style="text-align:left;background:transparent;border:0;border-bottom:1px dotted #cfc8b8;padding:2px 0 5px;cursor:pointer" style-hover="border-bottom-color:#17150f">
+                      <sc-if value="{{ d.hay }}" hint-placeholder-val="{{ true }}"><span style="font:400 16px/1.4 'IBM Plex Sans',sans-serif;color:#17150f">{{ d.valor }}</span></sc-if>
+                      <sc-if value="{{ d.esSd }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#8a8375;background:repeating-linear-gradient(45deg,#efeade 0 5px,#f7f4ec 5px 10px);border:1px dashed #bfb6a2;padding:6px 9px;border-radius:2px">s/d</span></sc-if>
+                    </button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid;gap:16px;position:sticky;top:80px">
+          <div style="padding:16px 17px;background:#fffefb;border:1px solid #dcd6c7;border-top:3px solid #17150f;border-radius:2px">
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em">LO QUE FALTA DE ESTA COMPRA</div>
+            <div style="margin-top:12px;font:500 15px/1.4 'IBM Plex Sans',sans-serif">{{ det.faltanTexto }}</div>
+            <div style="margin-top:8px;font:400 13px/1.55 'IBM Plex Sans',sans-serif;color:#6d675a">Está contado sobre los 5 datos opcionales de esta pantalla. No es un error ni una tarea pendiente: es lo que se sabe hasta ahora.</div>
+          </div>
+          <div style="padding:16px 17px;background:#eae5d8;border:1px solid #d5cdb9;border-radius:2px">
+            <div style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:.09em;color:#4a453a">CABEZAS, KILOS Y JAULAS</div>
+            <div style="margin-top:10px;font:400 13px/1.55 'IBM Plex Sans',sans-serif;color:#4a453a">Todavía no existen para esta compra: se cargan en el paso siguiente, que se diseña aparte. No hay un total en 0 ni un espacio esperándolos, porque no habría nada que sumar.</div>
+          </div>
+          <div style="padding:14px 16px;font:400 12px/1.6 'IBM Plex Mono',monospace;color:#8a8375;border:1px dashed #cfc8b8;border-radius:2px">Cargada el {{ det.creada }}<br />Último cambio: {{ det.cambiada }}</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="height:70px"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;vistaLista&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;tabla&quot;,&quot;tarjetas&quot;],&quot;default&quot;:&quot;tabla&quot;,&quot;tsType&quot;:&quot;'tabla' | 'tarjetas'&quot;,&quot;section&quot;:&quot;Variantes&quot;},&quot;modoAlta&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;largo&quot;,&quot;pasos&quot;],&quot;default&quot;:&quot;largo&quot;,&quot;tsType&quot;:&quot;'largo' | 'pasos'&quot;,&quot;section&quot;:&quot;Variantes&quot;},&quot;estiloRoles&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;fichas&quot;,&quot;libro&quot;],&quot;default&quot;:&quot;fichas&quot;,&quot;tsType&quot;:&quot;'fichas' | 'libro'&quot;,&quot;section&quot;:&quot;Variantes&quot;},&quot;estiloSd&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;sello&quot;,&quot;interruptor&quot;],&quot;default&quot;:&quot;sello&quot;,&quot;tsType&quot;:&quot;'sello' | 'interruptor'&quot;,&quot;section&quot;:&quot;Variantes&quot;},&quot;conDatos&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Variantes&quot;}}">
+class Component extends DCLogic {
+  empresas = [
+    { cod: 'PEG', nombre: 'Pecuaria El Garabí', prefijos: 'PEG · PEC' },
+    { cod: 'TAP', nombre: 'Las Taperas del Oeste', prefijos: 'TAP · LTA · LTP' },
+    { cod: 'BUL', nombre: 'Bulltrade', prefijos: 'BUL' },
+    { cod: 'DAR', nombre: 'Darwash', prefijos: 'DAR' },
+    { cod: 'ALO', nombre: 'Martín y Alonso', prefijos: 'ALO' },
+    { cod: 'UGM', nombre: 'Unión Ganadera', prefijos: 'UGM' },
+    { cod: 'SAG', nombre: 'El Saguaipe', prefijos: 'SAG' },
+  ];
+  consignatarios = [
+    { nombre: 'Darwash', n: 60 },
+    { nombre: 'Martin y Alonso SRL', n: 15 },
+    { nombre: 'Feria Rodeo Huinca (Renanco)', n: 11 },
+    { nombre: 'Ferialvarez', n: 8 },
+    { nombre: 'Testa Lelli Liaudat', n: 2 },
+    { nombre: 'Haciendas Villaguay', n: 2 },
+    { nombre: 'Bressan y Cia', n: 2 },
+    { nombre: 'Vicar Ganadera', n: 1 },
+    { nombre: 'Talano Hnos', n: 1 },
+    { nombre: 'Saenz Valiente Bullrich', n: 1 },
+    { nombre: 'Colombo y Magliano', n: 1 },
+  ];
+  vendedores = [
+    { nombre: 'DARWASH SA', n: 143 },
+    { nombre: 'FERIA RODEO HUINCA S.R.L', n: 56 },
+    { nombre: 'SOC. RURAL. GRAL VILLEGAS', n: 40 },
+    { nombre: 'FERIALVAREZ S.A', n: 31 },
+    { nombre: 'EL HARAS', n: 26 },
+    { nombre: 'DON PEDRO', n: 25 },
+    { nombre: 'MARTIN Y ALONSO SRL', n: 17 },
+    { nombre: 'EL DESCANSO', n: 17 },
+    { nombre: 'SOC. RURAL DE CARLOS CASARES', n: 13 },
+    { nombre: 'SOC.RURAL RIO QUINTO', n: 10 },
+    { nombre: 'SOC. RURAL DE RIO CUARTO', n: 10 },
+    { nombre: 'EDUARDO A TRAVAGLIA', n: 10 },
+    { nombre: 'TESTA LELLI LIAUDAT Y CIA', n: 9 },
+    { nombre: 'CALVO DANIEL OMAR S.R.L', n: 9 },
+  ];
+  hoteleros = [
+    { nombre: 'PEGSA', n: 577, propio: true },
+    { nombre: 'LAS TAPERAS', n: 41, propio: true },
+    { nombre: 'DARWASH SA', n: 26, propio: true },
+    { nombre: 'PECUARIA DESCANSO', n: 11, propio: false },
+    { nombre: 'PECUARIA EL COLORADITO', n: 9, propio: false },
+    { nombre: 'UGMA', n: 8, propio: true },
+    { nombre: 'PECUARIA DON PEDRO', n: 7, propio: false },
+    { nombre: 'TERCIO BRAVO SAS', n: 3, propio: false },
+    { nombre: 'BULLTRADE SRL', n: 3, propio: true },
+    { nombre: 'EL SAGUAIPE SAS', n: 2, propio: true },
+    { nombre: 'ZAMBRONI NICANOR', n: 1, propio: false },
+  ];
+  plazas = [
+    { nombre: 'WASHINGTON' }, { nombre: 'HUINCA RENANCO' }, { nombre: 'RIO CUARTO' },
+    { nombre: 'GENERAL VILLEGAS' }, { nombre: 'CORDOBA' }, { nombre: 'VILLA MERCEDES' },
+    { nombre: 'CARLOS CASARES' }, { nombre: 'BUENA ESPERANZA' }, { nombre: 'DEL CAMPILLO' },
+    { nombre: 'HUANGUELEN' }, { nombre: 'EL CAMPILLO' }, { nombre: 'VICUÑA MACKENNA' },
+  ];
+  personasIniciales = [];
+
+  baseCompras = [
+    { id: 6312, fecha: '2026-08-19', consignatario: 'Darwash', empresaCod: 'PEG', vendedor: 'DARWASH SA', hotelero: 'PEGSA', persona: null, plaza: 'WASHINGTON', comision: '2,5', modalidad: 'PORCENTAJE', observaciones: null },
+    { id: 6311, fecha: '2026-08-18', consignatario: 'Darwash', empresaCod: 'PEG', vendedor: 'DARWASH SA', hotelero: 'PEGSA', persona: null, plaza: 'WASHINGTON', comision: null, modalidad: null, observaciones: null },
+    { id: 6309, fecha: '2026-08-07', consignatario: 'Darwash', empresaCod: 'PEG', vendedor: null, hotelero: 'PEGSA', persona: null, plaza: 'WASHINGTON', comision: null, modalidad: null, observaciones: null },
+    { id: 6308, fecha: '2026-08-05', consignatario: 'Darwash', empresaCod: 'PEG', vendedor: 'EL HARAS', hotelero: 'PEGSA', persona: null, plaza: null, comision: null, modalidad: null, observaciones: null },
+    { id: 6306, fecha: '2026-07-28', consignatario: 'Darwash', empresaCod: 'TAP', vendedor: 'SOC. RURAL. GRAL VILLEGAS', hotelero: 'LAS TAPERAS', persona: null, plaza: 'GENERAL VILLEGAS', comision: '3', modalidad: 'PORCENTAJE', observaciones: null },
+    { id: 6305, fecha: '2026-07-23', consignatario: 'Darwash', empresaCod: 'PEG', vendedor: null, hotelero: 'PEGSA', persona: null, plaza: 'WASHINGTON', comision: null, modalidad: null, observaciones: null },
+    { id: 6304, fecha: '2026-07-21', consignatario: 'Darwash', empresaCod: 'BUL', vendedor: 'DON PEDRO', hotelero: 'BULLTRADE SRL', persona: null, plaza: 'RIO CUARTO', comision: null, modalidad: null, observaciones: 'Bulltrade compró poco y se colgó de la compra de PEG.', aviso: true },
+    { id: 6303, fecha: '2026-07-21', consignatario: 'Darwash', empresaCod: 'PEG', vendedor: 'DARWASH SA', hotelero: 'PEGSA', persona: null, plaza: 'WASHINGTON', comision: null, modalidad: null, observaciones: null },
+    { id: 6302, fecha: '2026-07-21', consignatario: 'Darwash', empresaCod: 'UGM', vendedor: null, hotelero: 'UGMA', persona: null, plaza: null, comision: null, modalidad: null, observaciones: null },
+    { id: 6300, fecha: '2026-07-17', consignatario: 'Feria Rodeo Huinca (Renanco)', empresaCod: 'PEG', vendedor: 'FERIA RODEO HUINCA S.R.L', hotelero: 'PEGSA', persona: null, plaza: 'HUINCA RENANCO', comision: '2,5', modalidad: 'PORCENTAJE', observaciones: null },
+    { id: 6296, fecha: '2026-06-26', consignatario: 'Darwash', empresaCod: 'TAP', vendedor: 'EL DESCANSO', hotelero: 'LAS TAPERAS', persona: null, plaza: null, comision: null, modalidad: null, observaciones: null },
+    { id: 6285, fecha: null, consignatario: null, empresaCod: null, vendedor: 'CALVO DANIEL OMAR S.R.L', hotelero: null, persona: null, plaza: 'VILLA MERCEDES', comision: null, modalidad: null, observaciones: 'Vino así de la planilla vieja: sin fecha, sin consignatario y sin empresa.' },
+    { id: 6284, fecha: null, consignatario: null, empresaCod: null, vendedor: null, hotelero: null, persona: null, plaza: null, comision: null, modalidad: null, observaciones: 'Vino así de la planilla vieja: sin fecha, sin consignatario y sin empresa.' },
+  ];
+
+  state = {
+    pantalla: (this.props.conDatos ?? true) ? 'lista' : 'vacio',
+    ruta: '/compras',
+    vista: this.props.vistaLista ?? 'tabla',
+    alta: this.props.modoAlta ?? 'largo',
+    rolesVar: this.props.estiloRoles ?? 'fichas',
+    sdVar: this.props.estiloSd ?? 'sello',
+    panel: false,
+    busqueda: '',
+    compras: this.baseCompras,
+    personas: [],
+    vendedoresExtra: [],
+    consignatariosExtra: [],
+    hotelerosExtra: [],
+    selId: null,
+    paso: 1,
+    combo: null,
+    comboBusqueda: '',
+    creando: false,
+    nombreNuevo: '',
+    form: { fecha: '', consignatario: '', empresa: '', vendedor: '', hotelero: '', persona: '', plaza: '', comision: '', modalidad: 'PORCENTAJE', observaciones: '' },
+    sdCampos: { vendedor: false, hotelero: false, persona: false, plaza: false, comision: false },
+    campoEditando: null,
+    borrador: '',
+    avisos: {},
+    toast: null,
+  };
+
+  // ---- utilidades ----
+  fmt(iso) {
+    if (!iso) return null;
+    const [a, m, d] = iso.split('-');
+    return d + '/' + m + '/' + a;
+  }
+  fmtLargo(iso) {
+    if (!iso) return 's/d';
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const [a, m, d] = iso.split('-');
+    return d + ' ' + meses[Number(m) - 1] + ' ' + a;
+  }
+  empresaDe(cod) {
+    return this.empresas.find((e) => e.cod === cod) || null;
+  }
+  catConsignatarios() { return this.state.consignatariosExtra.concat(this.consignatarios); }
+  catVendedores() { return this.state.vendedoresExtra.concat(this.vendedores); }
+  catHoteleros() { return this.state.hotelerosExtra.concat(this.hoteleros); }
+  toast(t) {
+    this.setState({ toast: t });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ toast: null }), 6000);
+  }
+  ir(pantalla, ruta) { this.setState({ pantalla, ruta, combo: null, creando: false, campoEditando: null }); }
+
+  // ---- catálogo del combo abierto ----
+  catalogoDe(campo) {
+    if (campo === 'consignatario') return this.catConsignatarios().map((c) => ({ nombre: c.nombre, meta: c.n + ' compras' }));
+    if (campo === 'empresa') return this.empresas.map((e) => ({ nombre: e.nombre, meta: e.prefijos }));
+    if (campo === 'vendedor') return this.catVendedores().map((v) => ({ nombre: v.nombre, meta: v.n ? v.n + '×' : 'nuevo' }));
+    if (campo === 'hotelero') return this.catHoteleros().map((h) => ({ nombre: h.nombre, meta: h.propio === false ? 'de terceros' : (h.n ? h.n + '×' : 'nuevo') }));
+    if (campo === 'persona') return this.state.personas.map((p) => ({ nombre: p.nombre, meta: '' }));
+    return [];
+  }
+
+  elegir(campo, nombre) {
+    const form = Object.assign({}, this.state.form);
+    form[campo] = nombre;
+    const sdCampos = Object.assign({}, this.state.sdCampos);
+    if (campo in sdCampos) sdCampos[campo] = false;
+    this.setState({ form, sdCampos, combo: null, comboBusqueda: '', creando: false });
+  }
+
+  crearYElegir() {
+    const campo = this.state.combo;
+    const nombre = (this.state.nombreNuevo || '').trim();
+    if (!campo || !nombre) return;
+    const s = {};
+    if (campo === 'vendedor') s.vendedoresExtra = [{ nombre, n: 0 }].concat(this.state.vendedoresExtra);
+    if (campo === 'consignatario') s.consignatariosExtra = [{ nombre, n: 0 }].concat(this.state.consignatariosExtra);
+    if (campo === 'hotelero') s.hotelerosExtra = [{ nombre, n: 0, propio: false }].concat(this.state.hotelerosExtra);
+    if (campo === 'persona') s.personas = [{ nombre }].concat(this.state.personas);
+    const form = Object.assign({}, this.state.form);
+    form[campo] = nombre;
+    this.setState(Object.assign(s, { form, combo: null, creando: false, comboBusqueda: '', nombreNuevo: '' }));
+    const que = campo === 'persona' ? 'La persona' : campo === 'vendedor' ? 'El vendedor' : campo === 'hotelero' ? 'El hotelero' : 'El consignatario';
+    this.toast(que + ' «' + nombre + '» quedó elegido y guardado en el catálogo. Si estaba mal escrito, se corrige desde el catálogo.');
+  }
+
+  guardarCompra(salir) {
+    const f = this.state.form;
+    const faltan = [];
+    if (!f.fecha) faltan.push('la fecha');
+    if (!f.consignatario) faltan.push('el consignatario');
+    if (!f.empresa) faltan.push('la empresa titular');
+    if (faltan.length) {
+      this.toast('Falta ' + faltan.join(', ') + '. Son los tres datos con los que se reconoce una compra en la lista.');
+      return;
+    }
+    if (this.state.alta === 'pasos' && this.state.paso < 3 && !salir) {
+      this.setState({ paso: this.state.paso + 1 });
+      return;
+    }
+    const emp = this.empresas.find((e) => e.nombre === f.empresa);
+    const id = Math.max.apply(null, this.state.compras.map((c) => c.id)) + 1;
+    const nueva = {
+      id, fecha: f.fecha, consignatario: f.consignatario, empresaCod: emp ? emp.cod : null,
+      vendedor: f.vendedor || null, hotelero: f.hotelero || null, persona: f.persona || null,
+      plaza: f.plaza || null, comision: f.comision || null, modalidad: f.comision ? f.modalidad : null,
+      observaciones: f.observaciones || null, nueva: true,
+    };
+    const sinDato = ['vendedor', 'hotelero', 'persona', 'plaza', 'observaciones'].filter((k) => !f[k]).length;
+    this.setState({
+      compras: [nueva].concat(this.state.compras),
+      selId: id, pantalla: 'detalle', ruta: '/compras/' + id, paso: 1,
+      form: { fecha: '', consignatario: '', empresa: '', vendedor: '', hotelero: '', persona: '', plaza: '', comision: '', modalidad: 'PORCENTAJE', observaciones: '' },
+      sdCampos: { vendedor: false, hotelero: false, persona: false, plaza: false, comision: false },
+    });
+    this.toast('Quedó guardada la compra #' + id + ', con ' + sinDato + ' de los 5 datos opcionales en s/d. Se completan acá cuando se sepan.');
+  }
+
+  guardarCampo() {
+    const clave = this.state.campoEditando;
+    const v = (this.state.borrador || '').trim();
+    const compras = this.state.compras.map((c) => {
+      if (c.id !== this.state.selId) return c;
+      const n = Object.assign({}, c);
+      if (clave === 'empresa') {
+        const emp = this.empresas.find((e) => e.nombre.toLowerCase() === v.toLowerCase() || e.cod === v.toUpperCase());
+        n.empresaCod = emp ? emp.cod : c.empresaCod;
+      } else {
+        n[clave] = v || null;
+      }
+      return n;
+    });
+    this.setState({ compras, campoEditando: null, borrador: '' });
+  }
+
+  renderVals() {
+    const st = this.state;
+    const sel = st.compras.find((c) => c.id === st.selId) || st.compras[0];
+    const sdVar = st.sdVar;
+    const activo = { bg: '#17150f', fg: '#f6f3ec' };
+    const inact = { bg: '#f6f3ec', fg: '#4a453a' };
+    const seg = (on) => (on ? activo : inact);
+    const sT = seg(st.vista === 'tabla'), sC = seg(st.vista === 'tarjetas');
+    const sL = seg(st.alta === 'largo'), sP = seg(st.alta === 'pasos');
+    const sF = seg(st.rolesVar === 'fichas'), sR = seg(st.rolesVar === 'libro');
+    const sS = seg(sdVar === 'sello'), sI = seg(sdVar === 'interruptor');
+    const sD = seg(st.pantalla !== 'vacio'), sV = seg(st.pantalla === 'vacio');
+
+    // ---- lista ----
+    const q = st.busqueda.trim().toLowerCase();
+    const coincide = (c) => {
+      if (!q) return true;
+      const emp = this.empresaDe(c.empresaCod);
+      return [c.consignatario, emp && emp.nombre, c.empresaCod, c.vendedor, c.plaza]
+        .filter(Boolean).join(' ').toLowerCase().includes(q);
+    };
+    const fila = (c) => {
+      const emp = this.empresaDe(c.empresaCod);
+      return {
+        id: c.id,
+        fechaTxt: this.fmt(c.fecha) || 's/d',
+        fechaHay: !!c.fecha, fechaSd: !c.fecha,
+        consignatario: c.consignatario || 's/d',
+        consignatarioHay: !!c.consignatario, consignatarioSd: !c.consignatario,
+        empresa: emp ? emp.nombre : 's/d',
+        empresaCod: c.empresaCod || 's/d',
+        empresaHay: !!emp, empresaSd: !emp,
+        vendedor: c.vendedor || 's/d',
+        vendedorHay: !!c.vendedor, vendedorSd: !c.vendedor,
+        plaza: c.plaza || 's/d',
+        plazaHay: !!c.plaza, plazaSd: !c.plaza,
+        tieneAviso: !!c.aviso && st.avisos[c.id] === undefined,
+        abrir: () => this.setState({ pantalla: 'detalle', ruta: '/compras/' + c.id, selId: c.id, campoEditando: null }),
+      };
+    };
+    const visibles = st.compras.filter(coincide);
+    const conFecha = visibles.filter((c) => c.fecha).sort((a, b) => (a.fecha < b.fecha ? 1 : -1)).map(fila);
+    const sinFecha = visibles.filter((c) => !c.fecha).map(fila);
+    const nAvisos = st.compras.filter((c) => c.aviso && st.avisos[c.id] === undefined).length;
+    const idAviso = (st.compras.find((c) => c.aviso) || {}).id;
+
+    // ---- alta ----
+    const campo = st.combo;
+    const cat = campo ? this.catalogoDe(campo) : [];
+    const cq = st.comboBusqueda.trim().toLowerCase();
+    const opciones = cat.filter((o) => !cq || o.nombre.toLowerCase().includes(cq)).map((o) => ({
+      nombre: o.nombre, meta: o.meta, elegir: () => this.elegir(campo, o.nombre),
+    }));
+    const exacto = cat.some((o) => o.nombre.toLowerCase() === cq);
+    const puedeCrear = !!campo && campo !== 'empresa' && cq.length > 1 && !exacto && !st.creando;
+    // Se comparan sin mayúsculas, sin acentos, sin puntuación y sin sufijo societario
+    // SOLO para avisar. Que dos textos sean la misma entidad lo decide una persona.
+    const normalizar = (t) => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[.,\-·/]/g, ' ').replace(/\b(s r l|srl|s a|sa|sas|s h|sh|hnos|cia|ltda)\b/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+    const claveBusqueda = normalizar(cq);
+    const parecidos = !puedeCrear ? [] : cat
+      .filter((o) => o.nombre.toLowerCase() !== cq && normalizar(o.nombre) === claveBusqueda)
+      .map((o) => ({ nombre: o.nombre, diferencia: 'ya en el catálogo', elegir: () => this.elegir(campo, o.nombre) }));
+    const hayParecido = parecidos.length > 0;
+    const crearPrimario = puedeCrear && !hayParecido && opciones.length === 0;
+    const crearSecundario = puedeCrear && (hayParecido || opciones.length > 0);
+    const textoCandidatos = hayParecido
+      ? 'Si el de arriba no es el mismo, es un nombre nuevo de verdad:'
+      : (opciones.length === 1 ? 'Hay 1 parecido en la lista. Si es ese, elegilo.' : 'Hay ' + opciones.length + ' parecidos en la lista. Si es alguno, elegilo.');
+    const tituloCreando = campo === 'vendedor' ? 'VENDEDOR / ORIGEN' : campo === 'hotelero' ? 'HOTELERO' : campo === 'persona' ? 'PERSONA COMPRADORA' : 'CONSIGNATARIO';
+
+    const abierto = {}, abrir = {}, sd = {}, noSd = {}, poner = {}, quitar = {}, marca = {}, set = {};
+    ['consignatario', 'empresa', 'vendedor', 'hotelero', 'persona'].forEach((k) => {
+      abierto[k] = st.combo === k;
+      abrir[k] = () => this.setState({ combo: st.combo === k ? null : k, comboBusqueda: '', creando: false });
+    });
+    ['vendedor', 'hotelero', 'persona', 'plaza'].forEach((k) => {
+      sd[k] = st.sdCampos[k];
+      noSd[k] = !st.sdCampos[k];
+      marca[k] = st.sdCampos[k] ? '#8a8375' : 'transparent';
+      poner[k] = () => {
+        const s = Object.assign({}, st.sdCampos); s[k] = true;
+        const form = Object.assign({}, st.form); form[k] = '';
+        this.setState({ sdCampos: s, form, combo: null });
+      };
+      quitar[k] = () => {
+        const s = Object.assign({}, st.sdCampos); s[k] = false;
+        this.setState({ sdCampos: s });
+      };
+    });
+    ['fecha', 'plaza', 'comision', 'observaciones'].forEach((k) => {
+      set[k] = (e) => {
+        const form = Object.assign({}, st.form); form[k] = e.target.value;
+        this.setState({ form });
+      };
+    });
+
+    const paso = st.paso;
+    const enPasos = st.alta === 'pasos';
+    const pasos = [
+      { tag: 'PASO 1', titulo: 'Lo que no puede faltar' },
+      { tag: 'PASO 2', titulo: 'Vendedor, hotelero y persona compradora' },
+      { tag: 'PASO 3', titulo: 'Plaza, comisión y observaciones' },
+    ].map((p, i) => {
+      const on = paso === i + 1, hecho = paso > i + 1;
+      return Object.assign({}, p, {
+        bg: on ? '#17150f' : hecho ? '#f2ede0' : '#fffefb',
+        fg: on ? '#f6f3ec' : hecho ? '#6d675a' : '#a8a294',
+        fgTag: on ? '#8d8574' : '#a8a294',
+      });
+    });
+
+    const emp = this.empresas.find((e) => e.nombre === st.form.empresa);
+    const faltanObl = [!st.form.fecha, !st.form.consignatario, !st.form.empresa].filter(Boolean).length;
+
+    // ---- detalle ----
+    const empSel = sel ? this.empresaDe(sel.empresaCod) : null;
+    const colores = { consignatario: '#2f5d3a', empresa: '#1f4f6b', vendedor: '#8a5a12', hotelero: '#6b3f7a', persona: '#7a3f3f' };
+    const editar = (clave, valorActual) => () => this.setState({ campoEditando: clave, borrador: valorActual || '' });
+    const ponerSd = (clave) => () => {
+      const compras = st.compras.map((c) => {
+        if (c.id !== st.selId) return c;
+        const n = Object.assign({}, c);
+        if (clave === 'empresa') n.empresaCod = null; else n[clave] = null;
+        return n;
+      });
+      this.setState({ compras, campoEditando: null, borrador: '' });
+    };
+    const cerrarEdicion = () => this.setState({ campoEditando: null, borrador: '' });
+    const rolDef = [
+      { clave: 'consignatario', rotulo: 'CONSIGNATARIO', definicion: 'Quien remató o intermedió la venta. También en la compra directa.', valor: sel && sel.consignatario, catalogo: this.catConsignatarios(), opcional: false },
+      { clave: 'empresa', rotulo: 'EMPRESA TITULAR', definicion: 'Bajo cuál de nuestras empresas se registra la compra.', valor: empSel ? empSel.cod + ' · ' + empSel.nombre : null, catalogo: this.empresas, opcional: false },
+      { clave: 'vendedor', rotulo: 'VENDEDOR / ORIGEN', definicion: 'De quién era la hacienda.', valor: sel && sel.vendedor, catalogo: this.catVendedores(), opcional: true },
+      { clave: 'hotelero', rotulo: 'HOTELERO', definicion: 'De quién es la hacienda una vez en el feedlot. Puede ser un tercero.', valor: sel && sel.hotelero, catalogo: this.catHoteleros(), opcional: true },
+      { clave: 'persona', rotulo: 'PERSONA COMPRADORA', definicion: 'Quién fue físicamente a comprar. No es la empresa.', valor: sel && sel.persona, catalogo: st.personas, opcional: true },
+    ];
+    const roles = rolDef.map((r) => ({
+      rotulo: r.rotulo, definicion: r.definicion, color: colores[r.clave],
+      valor: r.valor || 's/d', hay: !!r.valor, esSd: !r.valor, opcional: r.opcional, obligatorio: !r.opcional,
+      catalogo: r.catalogo, listaId: 'cat-' + r.clave,
+      editando: st.campoEditando === r.clave, viendo: st.campoEditando !== r.clave,
+      editar: editar(r.clave, r.clave === 'empresa' ? (empSel ? empSel.nombre : '') : r.valor),
+      guardar: () => this.guardarCampo(), cancelar: cerrarEdicion, ponerSd: ponerSd(r.clave),
+    }));
+    const datosDef = [
+      { clave: 'fecha', rotulo: 'Fecha de la compra', valor: sel && this.fmtLargo(sel.fecha), hay: !!(sel && sel.fecha), tipo: 'date', crudo: sel && sel.fecha, opcional: false },
+      { clave: 'plaza', rotulo: 'Plaza o lugar', valor: sel && sel.plaza, hay: !!(sel && sel.plaza), tipo: 'text', crudo: sel && sel.plaza, opcional: true },
+      { clave: 'observaciones', rotulo: 'Observaciones', valor: sel && sel.observaciones, hay: !!(sel && sel.observaciones), tipo: 'text', crudo: sel && sel.observaciones, opcional: true },
+    ];
+    const datos = datosDef.map((d) => ({
+      rotulo: d.rotulo, valor: d.valor || 's/d', hay: d.hay, esSd: !d.hay, tipo: d.tipo, opcional: d.opcional, obligatorio: !d.opcional,
+      editando: st.campoEditando === d.clave, viendo: st.campoEditando !== d.clave,
+      editar: editar(d.clave, d.crudo), guardar: () => this.guardarCampo(), cancelar: cerrarEdicion, ponerSd: ponerSd(d.clave),
+    }));
+    const OPCIONALES = ['vendedor', 'hotelero', 'persona', 'plaza', 'observaciones'];
+    const faltan = sel ? OPCIONALES.filter((k) => !sel[k]).length : 0;
+    const respuesta = sel ? st.avisos[sel.id] : undefined;
+
+    return {
+      ruta: st.ruta,
+      panelAbierto: st.panel,
+      togglePanel: () => this.setState({ panel: !st.panel }),
+      irRaiz: () => this.ir(st.pantalla === 'vacio' ? 'vacio' : 'lista', '/ → /compras'),
+      irLista: () => this.ir(st.pantalla === 'vacio' ? 'vacio' : 'lista', '/compras'),
+      irNueva: () => this.ir('nueva', '/compras/nueva'),
+      esVacio: st.pantalla === 'vacio', esLista: st.pantalla === 'lista', esNueva: st.pantalla === 'nueva', esDetalle: st.pantalla === 'detalle',
+
+      bgTabla: sT.bg, fgTabla: sT.fg, bgTarjetas: sC.bg, fgTarjetas: sC.fg,
+      bgLargo: sL.bg, fgLargo: sL.fg, bgPasos: sP.bg, fgPasos: sP.fg,
+      bgFichas: sF.bg, fgFichas: sF.fg, bgLibro: sR.bg, fgLibro: sR.fg,
+      bgSello: sS.bg, fgSello: sS.fg, bgInterruptor: sI.bg, fgInterruptor: sI.fg,
+      bgConDatos: sD.bg, fgConDatos: sD.fg, bgSinDatos: sV.bg, fgSinDatos: sV.fg,
+      setVistaTabla: () => this.setState({ vista: 'tabla' }),
+      setVistaTarjetas: () => this.setState({ vista: 'tarjetas' }),
+      setAltaLargo: () => this.setState({ alta: 'largo', paso: 1 }),
+      setAltaPasos: () => this.setState({ alta: 'pasos', paso: 1 }),
+      setRolesFichas: () => this.setState({ rolesVar: 'fichas' }),
+      setRolesLibro: () => this.setState({ rolesVar: 'libro' }),
+      setSdSello: () => this.setState({ sdVar: 'sello' }),
+      setSdInterruptor: () => this.setState({ sdVar: 'interruptor' }),
+      setConDatos: () => this.ir('lista', '/compras'),
+      setSinDatos: () => this.ir('vacio', '/compras'),
+
+      hayToast: !!st.toast, toast: st.toast, cerrarToast: () => this.setState({ toast: null }),
+
+      conteo: visibles.length === st.compras.length ? st.compras.length + ' cargadas' : visibles.length + ' de ' + st.compras.length,
+      busqueda: st.busqueda,
+      setBusqueda: (e) => this.setState({ busqueda: e.target.value }),
+      hayAvisos: nAvisos > 0,
+      textoAvisos: nAvisos === 1 ? '1 aviso, en 1 de ' + st.compras.length + ' compras' : nAvisos + ' avisos en ' + st.compras.length + ' compras',
+      irAviso: () => this.setState({ pantalla: 'detalle', ruta: '/compras/' + idAviso, selId: idAviso }),
+      verTabla: st.vista === 'tabla', verTarjetas: st.vista === 'tarjetas',
+      conFecha, sinFecha, filas: sinFecha.concat(conFecha),
+      haySinFecha: sinFecha.length > 0, nSinFecha: sinFecha.length,
+      sinResultados: visibles.length === 0,
+
+      form: st.form, set, sd, noSd, poner, quitar, marca, abierto, abrir,
+      sdSello: sdVar === 'sello', sdInterruptor: sdVar === 'interruptor',
+      opciones, puedeCrear, creando: st.creando, tituloCreando,
+      parecidos, hayParecido, crearPrimario, crearSecundario, textoCandidatos,
+      catalogoVacio: campo === 'persona' && cat.length === 0,
+      comboBusqueda: st.comboBusqueda,
+      setComboBusqueda: (e) => this.setState({ comboBusqueda: e.target.value }),
+      nombreNuevo: st.nombreNuevo,
+      setNombreNuevo: (e) => this.setState({ nombreNuevo: e.target.value }),
+      empezarCreacion: () => this.setState({ creando: true, nombreNuevo: st.comboBusqueda.trim() }),
+      confirmarCreacion: () => this.crearYElegir(),
+      cancelarCreacion: () => this.setState({ creando: false, nombreNuevo: '' }),
+      plazas: this.plazas,
+
+      textoConsignatario: st.form.consignatario || 'Elegir consignatario',
+      colorConsignatario: st.form.consignatario ? '#17150f' : '#a8a294',
+      textoEmpresa: emp ? emp.cod + ' · ' + emp.nombre : 'Elegir una de nuestras empresas',
+      colorEmpresa: emp ? '#17150f' : '#a8a294',
+      textoVendedor: st.form.vendedor || 'Buscar o crear',
+      colorVendedor: st.form.vendedor ? '#17150f' : '#a8a294',
+      textoHotelero: st.form.hotelero || 'Buscar o crear',
+      colorHotelero: st.form.hotelero ? '#17150f' : '#a8a294',
+      textoPersona: st.form.persona || 'Buscar o crear',
+      colorPersona: st.form.persona ? '#17150f' : '#a8a294',
+      bgPorcentaje: st.form.modalidad === 'PORCENTAJE' ? '#17150f' : '#fffefb',
+      fgPorcentaje: st.form.modalidad === 'PORCENTAJE' ? '#f6f3ec' : '#4a453a',
+      bgMonto: st.form.modalidad === 'MONTO' ? '#17150f' : '#fffefb',
+      fgMonto: st.form.modalidad === 'MONTO' ? '#f6f3ec' : '#4a453a',
+      setModalidadPorcentaje: () => this.setState({ form: Object.assign({}, st.form, { modalidad: 'PORCENTAJE' }) }),
+      setModalidadMonto: () => this.setState({ form: Object.assign({}, st.form, { modalidad: 'MONTO' }) }),
+
+      verPasos: enPasos, pasos,
+      verBloque1: !enPasos || paso === 1,
+      verBloque2: !enPasos || paso === 2,
+      verBloque3: !enPasos || paso === 3,
+      pasoAnterior: () => this.setState({ paso: Math.max(1, paso - 1) }),
+      guardar: () => this.guardarCompra(false),
+      guardarYSalir: () => this.guardarCompra(true),
+      textoGuardar: enPasos && paso < 3 ? 'Seguir' : 'Guardar la compra',
+      bgGuardar: faltanObl ? '#6d8f74' : '#2f5d3a',
+      notaGuardar: faltanObl ? 'Faltan ' + faltanObl + ' de los tres datos obligatorios.' : 'Se puede guardar así: lo que falte queda en s/d y se completa cuando se sepa.',
+      obligatoriosTexto: faltanObl === 0 ? 'los tres datos obligatorios están' : faltanObl + ' de 3 obligatorios sin cargar',
+      prevFecha: st.form.fecha ? this.fmt(st.form.fecha) : 's/d',
+      colorPrevFecha: st.form.fecha ? '#17150f' : '#a8a294',
+      prevConsignatario: st.form.consignatario || 's/d',
+      colorPrevConsignatario: st.form.consignatario ? '#17150f' : '#a8a294',
+      prevEmpresa: emp ? emp.cod + ' · ' + emp.nombre : 's/d',
+      colorPrevEmpresa: emp ? '#17150f' : '#a8a294',
+
+      rolesFichas: st.rolesVar === 'fichas', rolesLibro: st.rolesVar === 'libro',
+      borrador: st.borrador,
+      setBorrador: (e) => this.setState({ borrador: e.target.value }),
+      det: {
+        id: sel ? sel.id : '',
+        fechaTitulo: sel ? (this.fmt(sel.fecha) || 's/d') : '',
+        tituloResto: sel ? (sel.consignatario || 'sin consignatario') + ' · ' + (empSel ? empSel.cod : 'sin empresa') : '',
+        roles, datos,
+        faltanTexto: faltan === 0 ? 'Está completa: los 5 datos opcionales tienen valor.' : faltan + ' de los 5 datos opcionales están en s/d.',
+        creada: sel && sel.nueva ? 'hoy' : '25/08/2026 · oficina',
+        cambiada: sel && sel.nueva ? 'hoy, recién' : '26/08/2026 · oficina',
+        avisoPendiente: !!(sel && sel.aviso) && respuesta === undefined,
+        avisoResuelto: !!(sel && sel.aviso) && respuesta !== undefined,
+        avisoTexto: respuesta === 'real' ? 'Marcado como caso real por la oficina, hoy. La empresa titular queda en Bulltrade.' : 'Marcado para corregir por la oficina, hoy. Queda a la vista de quien revisa.',
+        avisoEsReal: () => this.setState({ avisos: Object.assign({}, st.avisos, { [sel.id]: 'real' }) }),
+        avisoACorregir: () => this.setState({ avisos: Object.assign({}, st.avisos, { [sel.id]: 'corregir' }) }),
+        avisoReabrir: () => { const a = Object.assign({}, st.avisos); delete a[sel.id]; this.setState({ avisos: a }); },
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

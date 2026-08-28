@@ -8,61 +8,51 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ---
 
-## Dónde retomamos — actualizado 2026-08-25
+## Dónde retomamos — actualizado 2026-08-28
 
-**Próximo paso concreto: pushear y mirar el deploy.** Nada se deployó desde el scaffold pelado: `migrate deploy` en el build, el `postinstall`, el CA inline y el adapter **solo corrieron en local**. Después de eso, la prueba contra el histórico (punto 8.1 del prompt de arranque).
+**Próximo paso concreto:** **auth**. Tabla `Usuario`, login, sesión y permisos por rol. Es lo último que traba las pantallas del módulo 2: el esquema ya está, el diseño está esperando saber quién entra y qué ve.
 
 | | |
 |---|---|
 | **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | Base migrada, con RLS, catálogos sembrados y el cliente andando. **Nada de esto se deployó todavía.** |
+| **Situación** | **Módulo 1 cerrado y andando en producción.** Módulo 2: esquema completo, pantallas sin empezar. |
 | **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
-| **Repo** | `github.com/harambeiskappa/Compras` → proyecto `inaki-pegsa/compras` en Vercel |
-| **Base** | Supabase `compras-db`, São Paulo, plan free. Migración `20260825191736_modulos_1_y_2` aplicada. |
+| **Repo** | `github.com/harambeiskappa/Compras` → `inaki-pegsa/compras` → https://compras-ten-mu.vercel.app |
+| **Base** | Supabase `compras-db`, São Paulo, plan free. Diez migraciones aplicadas, la última `20260828201311_establecimiento`. |
 | **Base de referencia** | `C:\Users\zemma\Claude\Projects\WinCompras\backend\db.sqlite3` (solo lectura) |
 
 ### Ya está hecho
 
-- Repo, GitHub, Vercel y Supabase enganchados. Primer deploy verde.
-- Scaffolding de Next.js: App Router, TypeScript, Tailwind, `src/`, ESLint, npm.
-- Prisma 7.10.0 pinneado exacto (CLI, client y `@prisma/adapter-pg`), con `prisma.config.ts`, generator `prisma-client` y `postinstall`.
-- `prisma/schema.prisma` completo y validado: 11 modelos, 3 enums, sin un solo `DEFAULT 0`.
-- `vercel link` y `vercel env pull` hechos: las variables están en `.env.local`.
-- `CLAUDE.md` con las decisiones fijas y las reglas duras del dominio.
-- **Primera migración aplicada.** Verificada consultando la base: el `CHECK (cabezas > 0)` está, las FK compuestas están, y ninguna de las seis columnas de cantidad/peso/precio/monto tiene default.
-- **RLS activado en las 14 tablas**, sin políticas, con `relforcerowsecurity = false` para preservar el bypass del dueño. Verificado que Prisma sigue leyendo después.
-- **Cliente conectando**, con el CA de Supabase inline y verificado por fingerprint contra el root que presenta el servidor.
-- **`prisma migrate deploy` en el script de build**, verificado pisando la variable con un host inválido para confirmar que lee `POSTGRES_URL_NON_POOLING`.
-- **`next dev` levanta y el bug de Turbopack NO aparece**: con el generator `prisma-client` de Prisma 7 emitiendo TypeScript a `src/generated/`, no hay ningún `.prisma/client` que resolver.
-- **Seed de categorías:** 8 canónicas y 217 sinónimos (de 258 filas, 41 colapsaron por dedup), 199 mapeados y 18 pendientes.
+- **Módulo 1 completo de punta a punta:** esquema, migraciones, seed, padrón único, validación de servidor, las tres pantallas y producción verificada. 19 chequeos en verde.
+- **Infraestructura:** repo, GitHub, Vercel y Supabase enganchados; Prisma 7.10.0 pinneado exacto; TLS con el CA de Supabase verificado por fingerprint; `prisma migrate deploy` en el build; RLS en todas las tablas.
+- **Seeds:** 8 categorías canónicas y 217 sinónimos (199 mapeados, 18 pendientes); 191 entidades con 210 roles y 11 prefijos; 12 plazas como sugerencias iniciales; **8 establecimientos**.
+- **La prueba contra el histórico**, con criterio estructural y catálogo de motivos, que no se rompe cuando el pipeline de WinCompras trae datos nuevos.
+- **El esquema del módulo 2, cerrado:** `ReporteCompra` con clave de idempotencia, `Adjunto` con dos padres posibles y CHECK de exactamente uno, `Lote.origenCategoria` y `Lote.establecimientoId`.
 
 ### Falta, en orden
 
-1. **Pushear y mirar el primer deploy con Prisma adentro** (el próximo paso de arriba).
-2. El seed de empresas: bloqueado, ver abajo.
-3. La prueba contra el histórico: representar las 118 compras del último año en el modelo nuevo y listar las que no entren, con el motivo. Es la verificación exigida del punto 8.1 del prompt de arranque.
-5. Las pantallas de los módulos 1 y 2.
-
-### Bloqueado esperando a Iñaki
-
-**El seed de empresas.** En `catalogos_comprador` están los 11 prefijos (PEG, BUL, DAR, TAP, LTA, ALO, PEC, LTP, TRB, UGM, SAG) pero **la columna de nombre está vacía en las once**. Hace falta la razón social real de cada una y, sobre todo, **cuáles comparten empresa**: TAP y LTA son las dos Las Taperas, pero no se sabe si PEC o LTP son otra cosa o alias de alguna ya listada. No sale de ningún lado.
+1. **Auth:** tabla `Usuario`, login, sesión larga, permisos por rol verificados en el servidor.
+2. **La máquina del offline:** endpoint de catálogos, borradores locales con fotos, cola de envío con clave de idempotencia, service worker. Prueba: modo avión → cargar → cerrar el navegador → reabrir → **envía una sola vez**.
+3. **Diseño con Claude Design** de las dos pantallas del módulo 2: la del comprador en la feria y la bandeja de la oficina. Destrabado por la decisión de auth.
+4. Las pantallas del módulo 2.
+5. **Arreglar el `ON DELETE` de `adjunto`** y los archivos huérfanos de Storage (borrar la fila no borra la foto).
 
 ### Decisiones abiertas
 
-Ninguna bloquea la migración. Las cuatro que bloqueaban el esquema están resueltas o cerradas con evidencia.
+Ninguna traba el módulo 2. Las de auth se cerraron el 28/08.
 
 | # | Decisión | Estado | Bloquea |
 |---|---|---|---|
+| 1 | ¿Hay señal en la feria? | **Resuelta:** normalmente sí, pero la app tiene que aguantar sin nada | — |
+| 2 | Link de carga: ¿token o login? | **Resuelta:** cuenta con usuario y contraseña; el link es un atajo, no la credencial | — |
+| 4 | Roles | **Resuelta:** ADMINISTRATIVO y COMERCIAL | — |
+| 9 | ¿Padrón único de entidades? | **Resuelta:** una sola tabla `entidad`, el rol lo da el campo | — |
+| 10 | TRB: ¿propio o tercero? | **Resuelta:** tercero, `esPropio = false` | — |
 | 13 | Empresa titular vs. compradora | **Resuelta:** son dos conceptos distintos | — |
 | 7 | ¿Carga ↔ tropa es N:N? | Cerrada como N:1 con evidencia; si aparece el caso, el arreglo es aditivo | — |
-| 10 | TRB: ¿propio o tercero? | Sin resolver; `esPropio` quedó nullable a propósito | el seed |
-| 8 | ¿El lote se pesa junto en la balanza? | Sin resolver; hay evidencia fuerte de que no | el módulo 4 |
-| 9 | ¿Padrón único de entidades o catálogos separados? | Sin resolver; hoy son 4 catálogos | un refactor futuro |
+| 3 | Qué campos son obligatorios | Resuelta para el módulo 1 (tres); abierta para el reporte del comprador | la UI del módulo 2 |
 | 11 | ¿El formulario acepta lotes mixtos? | Sin resolver; el esquema los soporta igual | la UI |
-| 3 | Qué campos son obligatorios | Sin resolver; se asumió la lista del documento | la UI |
-| 1 | ¿Hay señal en la feria? | Sin resolver — preguntarle a Matías | la arquitectura del formulario |
-| 2 | Link de carga: ¿token o login? | Sin resolver | auth |
-| 4 | Roles: quién carga, revisa, mira | Sin resolver — copiar de `remates-app` | auth |
+| 8 | ¿El lote se pesa junto en la balanza? | Sin resolver; hay evidencia fuerte de que no | el módulo 4 |
 | 5 | Cómo vuelve el imprimible | Sin resolver; `Adjunto.tipo` soporta las dos respuestas | alcance |
 | 6 | Compras de terceros | Sin resolver; `Adjunto.tipo` la soporta | alcance |
 | 12 | ¿El DTE se trae de WinCampo o se tipea? | Sin resolver; `Carga.dte` funciona en los dos casos | alcance |
@@ -70,9 +60,12 @@ Ninguna bloquea la migración. Las cuatro que bloqueaban el esquema están resue
 ### Cosas que ya nos mordieron una vez
 
 - El tag `latest` de `prisma` en npm apunta a un release candidate: **cualquier `npm install prisma` sin versión trae el RC.**
-- Prisma 7 + Next 16 + Turbopack tiene un bug documentado (`Cannot find module ".prisma/client/default"`) que va a aparecer recién al levantar `next dev`.
-- Los resúmenes de Claude Code se equivocaron tres veces (la carpeta donde estaba parado, las flags del scaffolding, la lectura del registry). **Cuando dos lecturas no cierran, pedir los bytes crudos, no el resumen.**
+- Los resúmenes se equivocaron varias veces (la carpeta donde estaba parado Claude Code, las flags del scaffolding, la lectura del registry). **Cuando dos lecturas no cierran, pedir los bytes crudos, no el resumen.**
 - El repo está una carpeta más adentro de lo que parece: `Projects\Compras\Compras`.
+- **Una migración de varios pasos que falla a mitad no tiene vuelta atrás automática:** Prisma no envuelve el archivo en una transacción. Se escriben re-ejecutables.
+- **Toda tabla nueva nace sin RLS.** Nada lo avisa salvo el dashboard de Supabase, y solo si alguien lo mira.
+- **Un aviso no puede detectar lo que la consulta ya descartó.** La comparación laxa no servía de nada porque el filtro estricto corría primero.
+- **Una prueba que no puede fallar es un adorno.** Pasó con la condición 2 de la prueba histórica, inalcanzable por construcción.
 
 ---
 
@@ -385,3 +378,332 @@ Dos cosas que salieron de leer la doc:
 El seed usa `node:sqlite`, que existe desde 22.5, así que sobrevive el bajón a 24 — y de todos modos nunca corre en Vercel.
 
 **Sigue sin verse el deploy.** El push se hizo (`fce1fbb..72bd402`), pero Claude Code no tiene manera de observar el build: el CLI de Vercel exige login interactivo, `gh` no está instalado y la API pública de GitHub devuelve 403 por rate limit. Lo que sí hizo fue correr **el comando exacto que corre Vercel** en local: `prisma migrate deploy && next build` pasa, encuentra `POSTGRES_URL_NON_POOLING` en el 5432, dice «No pending migrations to apply», y `/api/salud` compila como `ƒ` (dinámica), o sea que el `force-dynamic` quedó bien. Si falla en Vercel, no va a ser por el comando.
+
+---
+
+### 2026-08-25 · Producción responde: el círculo cerrado
+
+**`https://compras-ten-mu.vercel.app/api/salud` devuelve `{"ok":true}`.**
+
+En una sola respuesta queda probado junto lo que veníamos validando por partes y siempre en la máquina de Iñaki: la app deployada llega a Supabase por el pooler, el CA inline valida la cadena de certificados, RLS está activo y no la bloquea porque conecta con el rol dueño, y `migrate deploy` corrió en el build dejando la base al día.
+
+**Node fijado.** `engines.node: "24.x"` y `@types/node@^24`. Vercel solo ofrece 24.x (default), 22.x y 20.x — Node 25 no existe como opción, así que la divergencia era un hecho, no un riesgo. `tsc --noEmit` y `npm run build` pasan limpios tras el bajón; `node:sqlite` existe desde 22.5, así que el seed sobrevive. `engines.node` pisa lo que diga el dashboard, de modo que la versión queda determinística **y versionada en el repo**.
+
+`npm install` en local ahora avisa `EBADENGINE` porque la máquina corre Node 25. Es la señal funcionando, no un problema. Vale alinear local a 24 con `fnm` o `nvm-windows` — no por la advertencia, sino porque elimina la última divergencia entre local y producción.
+
+**Un descubrimiento lateral, para el módulo 2.** Los alias de preview de Vercel están detrás de Deployment Protection y redirigen a `vercel.com/login`. Producción no. Cuando llegue el link para cargar desde el celular hay que verificar que la protección siga apagada en el entorno que use el comprador: si estuviera activa, el link muere en un login de Vercel que esa persona no tiene ni va a tener. Se suma a la decisión abierta #2, como una capa por encima del token propio.
+
+---
+
+### 2026-08-25 · La prueba contra el histórico: el esquema aguanta
+
+**Cero casos (b).** Ninguna de las 120 compras del último año quedó afuera porque el modelo no pudiera representar el dato. Eso era lo que se venía a buscar y es el resultado que habilita empezar las pantallas.
+
+| | |
+|---|---:|
+| evaluadas | 120 |
+| entraron | 62 |
+| (a) falta un dato que el formulario nuevo va a exigir | 58 |
+| **(b) el modelo no lo puede representar** | **0** |
+| (c) el origen es contradictorio | 13 |
+
+**Cómo se corrió, que importa.** Cada compra en su propio SAVEPOINT dentro de una transacción que se revierte al final —en Postgres una violación aborta la transacción entera, y sin savepoints la prueba se habría frenado en el primer fracaso— e inserciones con SQL parametrizado en vez del cliente tipado, porque Prisma rechaza en memoria antes de tocar la base y se estaría midiendo la validación de Prisma en lugar de las constraints reales. Reversión verificada: las 9 tablas tocadas volvieron a 0 y los 217 sinónimos quedaron intactos.
+
+**Las (a): 58.** 53 sin empresa titular (previsto) y 14 sin consignatario (no previsto), superpuestas en 9. No son defectos del modelo: son exactamente los agujeros que la app existe para tapar.
+
+**Las (c): 13, y dos hallazgos nuevos.** Cuatro compras donde el texto y la tabla de conciliación difieren en cuántas tropas hay — 6298, 6311, 6313 y la ya conocida 6315; las tres primeras no estaban identificadas. Y nueve donde la empresa titular no figura **en absoluto** entre las empresas de sus tropas (5583, 5584, 6266, 6288, 6297, 6301, 6304, 6316, 6319).
+
+**Esas nueve invalidaron una regla que habíamos escrito.** No son datos mal cargados: **la empresa puede cambiar entre la compra y la liquidación** — se define comprar para BUL y se termina liquidando a PEGSA, cosa que pasa porque esas dos están muy vinculadas. Así que la validación «la titular tiene que estar entre las empresas de las tropas» bloquearía un caso legítimo. **Baja de bloqueo a aviso:** la app lo señala, una persona decide si fue un cambio legítimo o un error de carga. Es la misma forma que ya se usa para los kilos faltantes.
+
+**El consignatario siempre existe, también en la compra directa.** No es sinónimo de feria. Así que `NOT NULL` está bien y las 14 son categoría (a). Lo que sí cambia es el rótulo en la pantalla: si dice «Feria», quien compra directo lo va a leer como que no le corresponde y lo va a dejar vacío.
+
+**Lo que la prueba NO ejercitó, para que el cero no se lea como más de lo que es.** La FK compuesta de `lote` contra `tropa(id, compraId)` nunca se probó con un `tropaId` no nulo, porque en el sistema viejo el lote no tiene vínculo con la tropa: los 209 lotes entraron con NULL, que es justo el caso que la restricción no evalúa. La de `carga` sí se ejercitó, en 70 cargas. `Adjunto`, `PersonaCompradora` y `plazaLugar` no existen en el origen y quedaron sin probar.
+
+**Sobre 120 y no 118.** La medición previa había dado 118 con el corte `fecha_compra >= '2025-08-24'`, que **excluye las 2 compras con `fecha_compra` en NULL**. 118 + 2 = 120. Como `Compra.fecha` es `NOT NULL`, esas dos son categoría (a) también.
+
+---
+
+### 2026-08-25 · Las empresas, y la decisión #10 cerrada
+
+**Once prefijos, ocho empresas.**
+
+| empresa | prefijos | propia |
+|---|---|---|
+| Pecuaria El Garabí | PEG, PEC | sí |
+| Las Taperas del Oeste | TAP, LTA, LTP | sí |
+| Bulltrade | BUL | sí |
+| Darwash | DAR | sí |
+| Martín y Alonso | ALO | sí |
+| Unión Ganadera | UGM | sí |
+| El Saguaipe | SAG | sí |
+| Tercio Bravo | TRB | **no** |
+
+Esto **valida la decisión de tener `PrefijoTropa` como tabla aparte** en vez de una columna suelta en `Empresa`: dos de las ocho tienen más de un prefijo, y no era un caso hipotético.
+
+**Decisión #10, resuelta con más precisión de la esperada.** TRB no es solo «tercero»: su rol real no es el de empresa compradora sino el de **hotelero**. No analizamos sus compras, pero su hacienda puede entrar al feedlot o a campos adyacentes y hay que contabilizar su stock. Consecuencia concreta de UI: **una empresa con `esPropio = false` no aparece en el selector de empresa titular, pero sí en el de hotelero.**
+
+**Una observación al pasar, para la decisión #9.** Darwash es a la vez una de nuestras empresas (prefijo DAR) y el consignatario más frecuente del último año (60 de 118 compras). Es otro caso del mismo actor en varios roles, que suma al argumento de un padrón único de entidades. No bloquea nada hoy.
+
+**La fase se parte en dos.** El módulo 1 lo usa la oficina, con conexión, y no necesita resolver ninguna decisión abierta: se puede construir ya. El módulo 2 lo usa el comprador en la feria y depende de #1 (offline), #2 (token o login) y #4 (roles). Construir el 1 mientras se averigua lo del 2.
+
+---
+
+### 2026-08-25 · Cómo se decide el frontend
+
+**Acuerdo de trabajo.** El frontend lo trabaja Iñaki con **Claude Design**, no esta sesión. La división:
+
+- **Dominio (esta sesión):** el esquema, el seed, las validaciones del servidor, qué campos existen, cuáles son obligatorios, qué significa «s/d», y las reglas que el diseño no puede violar.
+- **Diseño (Claude Design):** cómo se ve, cómo se ordena, qué muestra cada pantalla, el flujo del formulario, los estados vacíos.
+
+**La zona gris —rutas y navegación— va por doble validación:** esta sesión propone, Claude Design evalúa, y vuelve acá para chequear contra las restricciones de dominio.
+
+**Regla de desempate, para que no sea un ping-pong infinito: si la propuesta de diseño no viola una restricción de dominio, gana el diseño.** Esta sesión no es árbitro del gusto; chequea que la app no vuelva a ser el Excel. Por defecto es una vuelta sola; una segunda solo si apareció un conflicto concreto.
+
+**Lo que tiene que volver de Claude Design:** la propuesta **y aparte la lista de qué puntos de la sección negociable cambió y por qué**. Sin esa lista no hay contra qué chequear.
+
+**El artefacto: `docs/diseno-modulo-1.md`**, versionado como todo lo demás. Tres secciones leídas distinto — restricciones de dominio (no negociables, cada una con su porqué, porque una restricción que no se entiende se saltea), propuesta de rutas y pantallas (negociable), y preguntas abiertas que son del diseño.
+
+**Solo el módulo 1.** Decisión explícita de Iñaki: no repetir el error de arrancar varios módulos a la vez, y menos el frontend. El módulo 2 se diseña después de saber si hay señal en la feria — un formulario que tiene que sobrevivir sin conexión no se diseña igual que uno común.
+
+**La pregunta de diseño que más importa**, de las nueve abiertas: **cómo se ve «s/d» de modo que ponerlo sea más fácil que inventar un dato.** Si cuesta más, la gente inventa, y toda la disciplina del esquema no sirve de nada.
+
+---
+
+### 2026-08-27 · La comisión va en el renglón, y un principio que salió de ahí
+
+**Lo que disparó todo.** Al revisar el prototipo, Iñaki señaló que la comisión estaba a nivel compra cuando en sus Excel siempre se aplica **por línea**, porque puede variar mucho.
+
+**Lo medido (último año).** La comisión *en monto* varía entre renglones en el 99 % de las compras con más de uno — pero eso es aritmética: distinto importe por renglón, mismo porcentaje, distinto monto. Mirando el **porcentaje**: idéntico en 68 de 73 compras, por redondeo en 1, y **distinto de verdad en 4**.
+
+Esas cuatro confirman la regla que Iñaki describió de memoria — *faena 2 %, invernada 3 %* — y el porcentaje **sigue al destino del lote**:
+
+| compra | El Haras (feedlot) | otros campos |
+|---|---|---|
+| 6314 | 2 % | El Coloradito y El Descanso: 3 % |
+| 6321 | 2 % | VER: 3 % |
+| 6313 | 2 % | El Coloradito: 2,05 % |
+
+**Pero no se deriva.** El destino está cargado en 35 de 347 renglones, y El Haras aparece con 2 %, 3 % y 4,5 %. La regla es «suele ser», no «es». Y como dijo Iñaki: *la comisión no la define, se la pasan*. Es un dato que se captura, no que se calcula. Lo que sí está bien respaldado es precargar el renglón nuevo con la comisión del anterior: en el 93 % de las compras se tipea una sola vez.
+
+**Un error propio, encontrado de paso.** `Compra.comision` reproducía un defecto del esquema viejo: en `liquidaciones_liquidacion`, `comision` es **la suma de las de sus renglones** — la compra 5325 guarda 5.168.904, que es exactamente 2.275.896 + 1.443.256 + 1.286.600 + 163.152. Un total guardado, justo lo que prohíbe la regla 2, y una de las cinco columnas derivadas que le criticamos a ese esquema hace dos días. La copiamos igual, estaba en el plan original y no se vio en la revisión.
+
+**Cambio:** `Compra.comision` y `Compra.comisionModalidad` salen; `Lote.comision` y `Lote.comisionModalidad` entran. El total de una compra se calcula sumando sus lotes.
+
+**Consecuencia para el módulo 1:** la comisión sale de esa pantalla — los lotes son del módulo 2. Los datos opcionales pasan de 9 a 8.
+
+---
+
+**El principio que salió de acá, ahora regla 4 de `CLAUDE.md`.** Iñaki planteó lo mismo para el destino: una regla general arriba («todo al feedlot») con excepción por línea. Medido: **el destino de cabecera está cargado en 0 de 1047 liquidaciones** — en el sistema viejo el destino solo vive en el renglón. Y donde está completo, la excepción es lo normal: 5 de 7 compras tienen destinos distintos entre renglones (muestra chica, no apoyarse en el porcentaje).
+
+De ahí: **la regla general es una comodidad de carga, no un dato guardado.** Rellena las líneas de una sola vez; lo guardado es siempre el valor de cada línea. Guardar además un valor de cabecera pondría el mismo concepto en dos lugares y divergiría apenas alguien cambie una línea y no la cabecera. Vale para comisión, para destino, y para lo que venga.
+
+**Pendiente para el módulo 2, no ahora:** el lote necesita su propio destino, con catálogo. Hoy el esquema solo tiene `Carga.destino` como texto libre, así que hay que decidir si el destino vive en la carga, en el lote o en los dos. No se mezcla con la migración de la comisión: una migración, un tema.
+
+**Dirección visual, para más adelante:** acercarse a algo estilo feedlot, manteniéndolo simple hasta que el back y los módulos estén funcionando. Decisión de Iñaki, y el orden es el correcto — una identidad visual sobre pantallas que todavía cambian de forma se rehace dos veces.
+
+---
+
+### 2026-08-27 · Comisión migrada, y el diseño del módulo 1 aprobado
+
+**La migración.** `Compra.comision` y `Compra.comisionModalidad` salieron; `Lote.comision` (`numeric(14,2)`) y `Lote.comisionModalidad` entraron, ambas nullable. La prueba contra el histórico da idéntico a antes: 120 / 62 / 58, con **(b) en cero**.
+
+**Claude Code afinó el análisis.** El total guardado no era un caso aislado: **en 99 de 119 compras del año, la comisión de cabecera es exactamente la suma de sus renglones.** Y separó las 7 compras con porcentajes distintos en tres categorías donde yo había visto dos:
+
+| tipo | compras |
+|---|---|
+| diferencia real | 5946 (3/4 %), 6314 y 6321 (2/3 %) |
+| un renglón con comisión **cero** | 5721, 6299 |
+| ruido de redondeo | 5607 (2,09/2,10), 6313 (2,00/2,05) |
+
+**Los ceros importan y son un caso conocido con nombre nuevo.** En `detalleliquidacion` la comisión es `NOT NULL`, así que un 0 puede significar «no se cobró en esta línea» o «no se sabe». Es el error central del proyecto, en el mismo campo que acabamos de mover. En el esquema nuevo la columna es nullable, así que la distinción se puede capturar — **pero el formulario del módulo 2 tiene que permitir «s/d» y no empujar a poner 0.**
+
+**Una advertencia de método para la próxima migración destructiva.** Acá se verificó que `compra` estuviera en 0 filas antes de tirar las columnas, y estuvo bien. Pero `migrate deploy` corre en cada build de Vercel contra la única base que hay: cuando haya compras cargadas de verdad, una migración destructiva no se resuelve chequeando que la tabla esté vacía. Necesita plan — mover el dato antes de tirar la columna.
+
+**El script de la prueba tiene una dependencia de estado.** Falló al correr después del seed de empresas porque creaba sus propios placeholders y chocaba contra el unique de `prefijo_tropa.codigo`. Ahora reusa los catálogos reales, lo que además la hace más fiel: corre contra los mismos datos que va a usar la app. Queda anotado en su encabezado que hay que correrla **después de cada cambio en el seed**, no solo tras cambios de esquema.
+
+---
+
+**El diseño del módulo 1 pasó la revisión.** Los tres puntos se verificaron leyendo el código, no el resumen: el botón «s/d» quedó envuelto en `<sc-if value="{{ r.opcional }}">` —usando la marca que ya estaba calculada—, no queda ningún rótulo de comisión en pantalla, y la lista sin fecha pasó a ser degradación explícita («NO SE PUEDEN CARGAR ASÍ»).
+
+**Un error mío, corregido por el diseño.** Dije «los opcionales pasan de 9 a 8». Son **5**: vendedor, hotelero, persona compradora, plaza y observaciones. Conté de memoria en vez de contar.
+
+**Los diez cambios a la sección negociable se revisaron uno por uno y ninguno viola una restricción de dominio**, así que por la regla de desempate quedan todos. Dos mejoran la propuesta original: sumar vendedor y plaza a la lista (con 60 de 120 compras del mismo consignatario, tres columnas no distinguen dos filas del mismo día) y ordenar los consignatarios por frecuencia en vez de alfabético.
+
+**Las cuatro variantes, elegidas por Iñaki:** lista en **tabla**, alta en **una sola hoja**, roles en **fichas**, «s/d» con **botón al lado**.
+
+**Sobre el Project Archive:** hace falta cuando el diseño cambió, y siempre antes de implementar. La verificación de las restricciones se hace leyendo el markup — el problema del botón «s/d» no aparecía en ningún resumen.
+
+---
+
+### 2026-08-27 · Normalización de catálogos, y por qué la ñ no se pliega
+
+**Qué hay.** `nombreNormalizado` con `unique` y `NOT NULL` en los cuatro catálogos que se crean al vuelo: consignatario, vendedor, hotelero y persona compradora. Migración en tres pasos escrita a mano —agregar nullable, rellenar, exigir `NOT NULL`, y recién después el unique— porque `ADD COLUMN ... NOT NULL` sobre las 18 filas existentes no tiene solución sin default. Se aplicó el mismo patrón a las cuatro aunque tres estuvieran vacías, para que funcione igual donde sea que corra.
+
+**El hallazgo que cambió la implementación.** De los 209 nombres del histórico, los únicos dos con diacríticos son `DOÑA ARVELIA SA` y `LEPORATI Y COMPAÑIA SA`, y en ambos el diacrítico es la **ñ**. No hay una sola vocal acentuada en todo el universo de datos.
+
+O sea que la parte útil de la normalización de acentos es **preventiva** —para cuando alguien tipee «Dárwash» en el buscador— mientras que la parte peligrosa ya estaba en los datos: un `NFD` ingenuo habría convertido `DOÑA` en `dona` y unido **Peña con Pena** desde el primer día. **La ñ no se pliega**, y quedó escrito en los tres lugares donde alguien podría «arreglarlo».
+
+**Y se usó un mapa explícito de vocales en vez de `NFD`**, para que el `translate` de la migración sea idéntico carácter por carácter al JS. Con `NFD`, JS plegaría cosas que Postgres no, y volveríamos a tener dos normalizaciones que no coinciden — exactamente el problema de `lower()` de SQLite contra `toLowerCase()` de JS, esta vez evitado antes de que ocurriera.
+
+**La protección, probada corrompiendo:** `"DARWASH"`, `"  Darwash  "` y `"Dárwash"` los rechaza el unique; `"Darwash Sur"` entra, como debe.
+
+**Lo que NO resuelve, dicho de frente.** `FERIA RODEO HUINCA S.R.L` y el mismo con punto final siguen siendo dos filas. Recortar puntuación es el mismo territorio que recortar sufijos societarios (S.R.L., S.A., Hnos): obliga a adivinar si dos textos son la misma entidad, y eso lo decide una persona. **Se resuelve en la pantalla, no en el esquema.**
+
+Y en el prototipo hay un hueco concreto: «＋ Crear «X» y elegirlo» aparece cuando no hay coincidencia **exacta**, aunque haya casi-gemelos listados arriba. Alguien tipea el nombre con un punto de más, ve el botón, y crea el duplicado. Pedido a Claude Design: que elegir un existente le gane visualmente a crear uno nuevo mientras haya candidatos, sin esconder «crear» — un vendedor nuevo de verdad aparece seguido.
+
+**Las dos notas quedaron escritas** donde se van a leer: en el encabezado de `scripts/prueba-historico.ts`, que depende del estado de los catálogos y hay que correrla tras cada cambio del seed (con el caso que ya pasó como evidencia); y en `CLAUDE.md`, que una migración destructiva con datos reales necesita mover el dato antes de tirar la columna, en migraciones separadas, porque `migrate deploy` corre en cada build contra la única base que hay.
+
+---
+
+### 2026-08-27 · Padrón único: decisión #9 cerrada
+
+**Qué hay.** Una sola tabla `entidad` con 206 filas (de 212 nombres), más `entidad_rol` con 212 roles y los 11 prefijos colgando de ahí. Las cinco tablas de catálogo —`empresa`, `consignatario`, `vendedor`, `hotelero`, `persona_compradora`— desaparecieron.
+
+| rol | entidades | | esPropio |
+|---|---:|---|---:|
+| VENDEDOR | 175 | true | 7 |
+| CONSIGNATARIO | 18 | false | 1 (Tercio Bravo) |
+| HOTELERO | 11 | null | 198 |
+| EMPRESA_COMPRADORA | 8 | | |
+
+**Los cuatro roles no se mezclaron.** Los cinco campos de `Compra` y el de `Tropa` siguen siendo columnas distintas, ahora las seis apuntando a `entidad`. **El rol lo da el campo, no la tabla** — es lo que permite que Darwash sea consignatario, vendedor y empresa propia sin ser tres filas que divergen. Verificado contra `information_schema`.
+
+**Seis entidades colapsaron**, y el seed las lista en pantalla en cada corrida, no solo la primera: Darwash (consignatario + empresa), DARWASH SA y PEGSA (vendedor + hotelero), y Colombo y Magliano, Martin y Alonso SRL y Saenz Valiente Bullrich (consignatario + vendedor), estas tres escritas en mayúsculas en un campo y capitalizadas en el otro.
+
+**Por qué se hizo ahora.** Había catálogos sembrados pero **cero compras cargadas**: ninguna fila real apuntaba a esas tablas. Fue una reconstrucción limpia, no una migración de datos con deduplicación manual. Era lo más barato que iba a ser nunca.
+
+**Los alias, confirmados por Iñaki.** Las mismas empresas aparecían con nombres distintos según el rol; el padrón convirtió eso de un problema de esquema en una edición de datos, y estos siete pares se mapean en el seed: PEGSA → Pecuaria El Garabí · LAS TAPERAS → Las Taperas del Oeste · DARWASH SA → Darwash · BULLTRADE SRL → Bulltrade · EL SAGUAIPE SAS → El Saguaipe · UGMA → Unión Ganadera · TERCIO BRAVO SAS → Tercio Bravo.
+
+**Un hallazgo que explica esa columna, para el módulo 2.** Entre los «hoteleros» del histórico están PECUARIA DESCANSO, PECUARIA EL COLORADITO y PECUARIA DON PEDRO, y los tres primeros nombres aparecen también en el catálogo de destinos. **EL DESCANSO y EL COLORADITO son campos de Pecuaria El Garabí**, no empresas. O sea que el sistema viejo mezclaba en la misma columna dos cosas distintas: **de quién es la hacienda** y **en qué campo está físicamente**. No se fusionan con PEGSA en el seed —no se sabe si son sociedades reales o etiquetas de campo, y fusionar sería adivinar— pero explica por qué esa columna tiene nombres que no son empresas. A resolver cuando el módulo 2 toque el destino. De Don Pedro no se sabe.
+
+**Dos reglas que dejaron los tropiezos, ahora en `CLAUDE.md`:**
+
+1. **Toda migración de varios pasos se escribe re-ejecutable.** La primera falló a mitad: el `DELETE FROM prefijo_tropa` estaba al final, pero la FK nueva se valida al crearse y las 11 filas viejas apuntaban a empresas ya borradas. Prisma no envuelve el archivo en una transacción, así que quedó a medias y sin rollback automático.
+2. **Toda tabla nueva nace sin RLS**, y hay que activarlo en la migración que la crea. `entidad` y `entidad_rol` aparecieron con dos CRITICAL en el dashboard mientras las cinco tablas que reemplazaban sí lo tenían.
+
+---
+
+### 2026-08-28 · La prueba histórica dejó de comparar contra un número
+
+**El problema.** La base de WinCompras es un **pipeline vivo**: entre dos corridas pasó de 1049 a 1051 filas y la ventana de 120 a 121 compras. El criterio de aprobación era numérico —«120 / 62 / 58»— así que cada ingesta la iba a hacer «fallar» sin que nada estuviera mal. En tres semanas nadie la mira más.
+
+**El criterio nuevo, estructural.** Aprueba si y solo si **(b) es cero** —ninguna compra queda afuera porque el modelo no la pueda representar— **y todo fallo cae en un motivo ya catalogado**. Los conteos se reportan como información, junto con el tamaño y la fecha de modificación de la base de origen, para que un cambio de números se explique solo. El código de salida es el veredicto: si no, correrla desde un script diría que aprobó siempre.
+
+**Lo mejor del cambio, y no lo pedí yo: la condición 2 no podía fallar nunca.** Al escribirla, Claude Code se dio cuenta de que todo fallo no reconocido caía en (b), así que «motivo sin catalogar» era inalcanzable por construcción. **Una prueba que no puede fallar no es una prueba, es un adorno que da confianza falsa.** La volvió real exigiendo que el motivo **explique el código de error que devolvió Postgres**: si una compra no trae empresa titular pero el rechazo no fue un `23502`, el diagnóstico es falso y queda sin catalogar. Y lo verificó **rompiéndola a propósito**, no afirmando que funcionaba.
+
+**El catálogo de motivos, con su reparto actual:** `FALTA_EMPRESA_TITULAR` 53 · `FALTA_CONSIGNATARIO` 14 · `TITULAR_FUERA_DE_SUS_TROPAS` 9 · `TROPAS_TEXTO_VS_CONCILIACION` 4. Las 13 contradicciones dejaron de ser observaciones sueltas y son fallos (c) catalogados, así que una contradicción de un tipo nuevo hace fallar aunque los totales no se muevan.
+
+**Y quedó escrito en el código lo que más va a valer con el tiempo:** agregar un motivo al catálogo es una decisión que dice «esto ya lo miramos», **no una forma de callar la prueba**. Sin esa frase, en seis meses el catálogo tiene veinte motivos y la prueba aprueba siempre.
+
+**Una compra recién ingestada del pipeline real entró sin un rasguño en el modelo nuevo.** Es la mejor validación posible: datos que llegaron después de que el esquema se diseñó.
+
+---
+
+### 2026-08-28 · Los alias, y la convención que los explica
+
+**Ocho pares más, confirmados por Iñaki**, además de los siete anteriores. Siete de los ocho tienen exactamente la misma forma:
+
+| como CONSIGNATARIO | como VENDEDOR |
+|---|---|
+| Ferialvarez | FERIALVAREZ S.A |
+| Bressan y Cia | BRESSAN Y CIA SRL |
+| Ferias Mark Hnos | FERIAS MARK HNOS SRL |
+| Orella | ORELLA SRL |
+| Vicar Ganadera | VICAR GANADERA SA |
+| Martín y Alonso | Martin y Alonso SRL |
+| Pecuaria El Garabí | PECUARIA EL GARABI SA |
+
+**La convención, que vale más que los ocho casos: la feria aparece con su nombre corto cuando consigna y con su razón social completa cuando es el origen.** No es ruido, es un patrón del sistema viejo, y va a seguir generando pares nuevos a medida que entren datos. El octavo es `FERIA RODEO HUINCA S.R.L` con y sin punto final.
+
+Ninguno se fusiona por normalización automática —recortar sufijos societarios obliga a adivinar— sino por confirmación explícita en `ALIAS_ENTIDAD`. La detección los señala; una persona decide. Es la misma división que en la pantalla.
+
+---
+
+### 2026-08-28 · Módulo 1 terminado, y la decisión #1 resuelta
+
+**Las pantallas del módulo 1 están, verificadas: 19 chequeos en verde, 0 en rojo.** Lista, alta y ver/editar, con el padrón, los tres estados del combo, «s/d» como NULL solo donde corresponde, y validación de servidor probada con un POST directo que saltea el formulario.
+
+**El mejor resultado de la verificación es el que falló primero.** El chequeo 7 —el aviso de casi-idéntico por puntuación— no pasaba: el selector filtraba por `nombreNormalizado`, que es la forma **estricta** y conserva la puntuación, así que `FERIA RODEO HUINCA S.R.L.` con punto nunca llegaba a la comparación laxa. **El aviso no puede detectar lo que la consulta ya descartó.** Toda la discusión de las dos normalizaciones no servía de nada si la de arriba filtraba primero, y eso no se veía leyendo el código: se vio porque el chequeo estaba en la lista. Los parecidos ahora salen de una consulta propia.
+
+**Tres decisiones de implementación.** Se sacó `import "server-only"` de `entidades.ts` porque rompe fuera del runtime de RSC y dejaba afuera al script de verificación —que existe justamente para probar que la validación es del servidor—; la protección sigue existiendo por otra vía y quedó documentada, aunque **quitar una guarda de compilación para que pase un test es en general la dirección equivocada del trade**. `revalidatePath` va envuelto en un helper que ignora un invariant de Next fuera de contexto y re-tira cualquier otro error. Y las plazas se siembran como sugerencias iniciales (12 del histórico) unidas a las ya usadas: un selector vacío el día uno no ayuda, y con texto libre se terminan teniendo `WASHINGTON`, `Washington` y `Wash.` como tres cosas distintas.
+
+---
+
+**Decisión #1, resuelta — y no como se esperaba.** La pregunta era si el comprador tiene señal en la feria. La respuesta de Iñaki: normalmente sí —Starlink en la computadora, datos móviles en el celular— **pero la app tiene que aguantar el peor escenario igual: llegar sin nada de señal y cargar la compra entera.**
+
+O sea que el módulo 2 no es un formulario común. Cuatro consecuencias:
+
+1. **Clave de idempotencia**, con `unique`. El borrador nace en el dispositivo con un identificador propio y el servidor lo usa para reconocer un reenvío. Es una columna nueva y hay que decidirla antes de escribir el módulo 2.
+2. **Los catálogos viven cacheados en el dispositivo** — 191 entidades, 8 categorías, 217 sinónimos, 11 prefijos: unos pocos KB. Hace falta un endpoint que los entregue y una forma de saber cuándo refrescarlos.
+3. **El borrador no puede guardar el id de una entidad creada al vuelo, tiene que guardar el nombre.** Estando offline esa entidad todavía no existe en el servidor, que la resuelve o la crea al recibir apoyándose en el `nombreNormalizado` estricto. Si dos compradores dan de alta el mismo vendedor cada uno por su lado, el `unique` los junta solo.
+4. **Service worker**, porque la pantalla tiene que abrir sin red.
+
+**Quedan dos decisiones abiertas para el módulo 2**, las dos de auth y probablemente resolubles juntas: el link de carga (#2, token o login) y los roles (#4). Las dos tienen la misma referencia disponible: `remates-app`, que ya las tiene funcionando.
+
+---
+
+### 2026-08-28 · Módulo 1 cerrado, andando en producción
+
+**Los tres chequeos, contra `https://compras-ten-mu.vercel.app`:** la raíz redirige a `/compras` con el estado vacío; `/api/salud` devuelve `{"ok":true}`; y una compra creada contra la base real quedó con los cinco opcionales en **NULL**, no en cadena vacía. La lista la mostró con sus sellos «s/d» y el detalle sin ninguna mención de «oficina».
+
+**La validación se probó en producción, no solo en local.** Se extrajo el id de la server action del bundle desplegado y se hizo el POST directo: sin empresa titular la rechaza, y con una entidad que no es nuestra también. Después se borró la compra de prueba y se restauró el padrón: 191 entidades, 210 roles, 11 prefijos, 0 huérfanos.
+
+**El `server-only` se resolvió como correspondía.** En vez de dejar la app sin la guarda de compilación, la guarda volvió a `entidades.ts` y el script de verificación intercepta la resolución de ese módulo **solo para sí mismo**, con el porqué escrito en los dos lados. **El que se adapta es el test, no el código de producción.** Se re-corrió la verificación con la guarda puesta: 19 en verde.
+
+**Las plazas** quedaron como 12 sugerencias iniciales unidas a las ya usadas en compras, deduplicando sin distinguir mayúsculas ni acentos, y ante empate **gana la forma que alguien escribió en una compra real** — así la lista se corrige sola con el uso en vez de quedar clavada al código.
+
+**Una nota sobre los ids.** Los resets consumieron la secuencia y arrancan en 3. Se resetea a 1 antes de la primera compra real. Pero lo que importa más: **el id es un identificador, no un contador.** Un insert fallido consume un número, así que van a aparecer huecos. Si alguien lee `#47` como «llevamos 47 compras» está sacando un número inventado, y el diseño lo muestra grande.
+
+---
+
+**Con esto el módulo 1 está completo: esquema, seed, padrón, servidor, pantallas y producción.** Es lo primero del proyecto que funciona de punta a punta.
+
+---
+
+### 2026-08-28 · Los establecimientos son un catálogo propio, y no una entidad más
+
+**La corrección es de vocabulario, y por eso importa.** La casa los llama **establecimientos**, no «destinos». LA CUCUCA, EL COLORADITO, EL DESCANSO, SAN ANTONIO y los demás son eso y nada más que eso: **no compran, no consignan y no venden**. Si el campo se llama como ellos lo llaman, nadie tiene que traducir mentalmente al cargar.
+
+**Por qué no van al padrón de entidades.** La tentación era obvia —ya hay una tabla de entidades con roles— pero el test es simple: si los establecimientos fueran entidades, `Venta` tendría que ser una entidad, y no lo es. Se midió el solape con los hoteleros del padrón comparando exacto: **cero**. La confusión que veníamos arrastrando —«PECUARIA EL COLORADITO» apareciendo como hotelero— era un artefacto de nombres del sistema viejo, no un solape real. El sistema viejo mezclaba en una columna **de quién es la hacienda** y **en qué campo está**; acá quedan separados.
+
+**Los ocho, sembrados:** El Haras · El Coloradito · El Descanso · La Cucuca · La Panchita · San Antonio · El Durazno · Pancho Primero. Del catálogo viejo **no** se migraron `Feedlot`, `Venta` ni `VER`: son otra cosa. «SIN ASIGNAR» era Pancho Primero, que el portal no tomó.
+
+**Una nota para cuando se diseñe la pantalla:** El Haras concentra la mayor parte del stock, así que un orden alfabético lo entierra **igual que a Darwash en los consignatarios**. Ordenar por uso, no por nombre. Es la segunda vez que aparece la misma regla, y no va a ser la última.
+
+**El establecimiento vive en el renglón, no en la cabecera** (regla 4): 5 de 11 compras con el destino cargado lo tienen mixto, y el establecimiento se correlaciona con la comisión —feedlot 2 %, campo 3 %—, que también es del renglón. «Todo al feedlot» es un gesto que rellena las líneas, no un dato guardado arriba.
+
+**Con esto el esquema del módulo 2 quedó completo:** `ReporteCompra` con su clave de idempotencia, `Adjunto` con dos padres posibles y el CHECK de exactamente uno, `Lote.origenCategoria` y `Lote.establecimientoId`. Diez migraciones aplicadas.
+
+---
+
+### 2026-08-28 · Quién entra a la app: decisiones #2 y #4, cerradas
+
+**Dos roles, y por ahora ni uno más.** **ADMINISTRATIVO**: acceso completo, edita compras, carga información. **COMERCIAL**: crea el inicio de la compra —el reporte desde la feria— y casi no edita. Si más adelante hacen falta más, se agregan; empezar con cinco roles hipotéticos habría sido inventar permisos para gente que no existe.
+
+**Y la pregunta que eso abrió, que era la que trababa las pantallas: si el comercial tiene un rol, tiene una identidad. ¿Cómo entra?** Tres respuestas posibles: cuenta propia, el link como credencial, o link mágico sin contraseña.
+
+**La respuesta: cuenta propia con usuario y contraseña, y el rol viaja con la cuenta.** El link que se le pasa al comercial es **un atajo a la pantalla, nunca la credencial**. La diferencia no es formal: si el link fuera la credencial, reenviarlo por WhatsApp regalaría el acceso, y sacárselo a una sola persona obligaría a cambiárselo a todas. Con cuenta, dar de baja a alguien es una fila.
+
+**Tres consecuencias que no eran obvias.**
+
+1. **No se usa Supabase Auth.** Sus usuarios viven en `auth.users`, fuera de `prisma/schema.prisma`, y eso rompe la regla de que el esquema esté entero en el repo con historial — la misma razón por la que está prohibido crear tablas desde el editor de Supabase. Además la app se conecta como dueño y saltea RLS, así que las políticas que Supabase Auth habilita no se usarían. `Usuario` es una tabla más, con su migración y su RLS.
+2. **La sesión tiene que ser larga, y la obliga el offline.** Una sesión de una hora deja al comprador afuera justo en el peor escenario: abrió el formulario en el campo, sin señal, con los borradores adentro y sin forma de renovar nada. Solo el primer login necesita conexión.
+3. **Los permisos se verifican adentro de cada server action, no escondiendo botones.** Una server action se puede invocar directo, y en este proyecto **ya se hizo exactamente eso contra producción** para probar las validaciones del módulo 1. Lo que se probó una vez como verificación es lo que hay que suponer que alguien puede hacer.
+
+**Lo que esto destraba.** La atribución que el diseño del módulo 1 mostraba —«Cargada el 25/08/2026 · oficina»— quedaba sin dato y por eso se mostraban las fechas peladas: poner «oficina» fijo habría sido inventar. Con cuentas hay a quién atribuirle la carga, y se puede mostrar la persona en vez de una etiqueta genérica. Nullable igual: las compras cargadas antes de que existieran las cuentas no tienen autor, y eso es «s/d», no «oficina».
+
+**Y una distinción que hay que sostener.** `ReporteCompra.personaCompradoraId` apunta al padrón y responde **quién fue físicamente a comprar** — puede ser alguien sin cuenta. La cuenta responde **quién cargó esto**. Son dos hechos distintos y se guardan por separado; la cuenta puede apuntar a su entidad para precargar el campo, pero precargar no es ser lo mismo.
+
+**Con esto no queda ninguna decisión trabando el módulo 2.**
+
+---
+
+### 2026-08-28 · Los ocho establecimientos, verificados — y un número mío que no cerraba
+
+**Verificación en verde.** Los ocho contra la base, con su normalizado; ninguno de los excluidos coló; 13 tablas, todas con RLS; `lote.establecimientoId` nullable y sin default; cero duplicados por normalizado; seed idempotente —segunda corrida crea 0—. La prueba histórica aprobada y las 16 comprobaciones del esquema del módulo 2 en verde, con `tsc` y `build` limpios.
+
+**Dos correcciones sobre el catálogo viejo, encontradas al mapear los 12 destinos a los 8.** `El Haras (feedlot)` y `Haras` eran dos filas del mismo lugar, y `Haras` **nunca se usó en ningún renglón** — así que unificarlas no pierde nada, y eso está verificado, no supuesto. `SAN ANOTONIO` es un tipeo y quedó como `San Antonio`. La exclusión de `Feedlot`, `Venta` y `VER` quedó en un recuadro en el seed con el motivo de cada una: una es una clase de lugar, otra un destino comercial y la tercera una marca de «revisar esto». **Quien las vea faltar va a leer por qué antes de agregarlas** — que es la diferencia entre una decisión y un olvido.
+
+**Un número mío que no cerraba, y la corrección es la regla 11 aplicada a mí.** Dije que El Haras concentra el **57,6 %** del stock. Medido sobre cabezas compradas con destino cargado en `detalleliquidacion`, da **45,9 % (735 de 1600)**. No es que uno esté mal: **son dos poblaciones distintas** — el 57,6 % sale del stock en el feedlot, que no es lo mismo que las cabezas compradas con destino registrado. El error fue mío y fue soltar un porcentaje sin su denominador, que es exactamente lo que la regla 11 prohíbe. **Cuando la pantalla muestre ese número, tiene que decir cuál de los dos está mostrando, con su cobertura al lado.** La conclusión no cambia por ninguno de los dos caminos: El Haras concentra la mayoría y un orden alfabético lo entierra.
+
+**Un dato para cuando se arme el selector:** de los ocho, solo **cinco tienen uso registrado** —El Haras, El Coloradito, Pancho Primero, El Descanso, San Antonio—. La Cucuca, La Panchita y El Durazno existen en el catálogo pero nunca aparecieron en un renglón. Un orden por uso los va a dejar al final, que probablemente sea lo correcto, pero **conviene saberlo antes de que alguien piense que se perdieron**.

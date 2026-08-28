@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { salir } from "@/lib/acciones-auth";
+import type { UsuarioSesion } from "@/lib/auth";
+
 /**
  * Barra fija. Muestra la ruta actual en monoespaciada, como el prototipo: es
  * una app de oficina y saber dónde se está parado vale más que el adorno.
  */
-export function Encabezado() {
+export function Encabezado({ usuario }: { usuario: UsuarioSesion | null }) {
   const ruta = usePathname();
+
+  // Sin sesión no se muestra la barra: la única pantalla es el login.
+  if (!usuario) return null;
 
   return (
     <header
@@ -79,20 +85,52 @@ export function Encabezado() {
         >
           Compras
         </Link>
-        <Link
-          href="/compras/nueva"
+        {/*
+          El botón solo aparece para ADMINISTRATIVO. Esconderlo NO es el
+          permiso: `crearCompra` exige el rol del lado del servidor. Esto es
+          para no ofrecerle a un comercial algo que le va a ser rechazado.
+        */}
+        {usuario.rol === "ADMINISTRATIVO" && (
+          <Link
+            href="/compras/nueva"
+            style={{
+              padding: "7px 14px",
+              font: "500 13px var(--font-plex-sans), sans-serif",
+              color: "var(--tinta)",
+              background: "#e5dfd0",
+              border: "1px solid #e5dfd0",
+              borderRadius: 2,
+              textDecoration: "none",
+            }}
+          >
+            Registrar una compra
+          </Link>
+        )}
+        <div style={{ width: 1, height: 20, background: "#3a352a" }} />
+        <span
           style={{
-            padding: "7px 14px",
-            font: "500 13px var(--font-plex-sans), sans-serif",
-            color: "var(--tinta)",
-            background: "#e5dfd0",
-            border: "1px solid #e5dfd0",
-            borderRadius: 2,
-            textDecoration: "none",
+            font: "400 12px/1 var(--font-plex-mono), monospace",
+            color: "#8d8574",
           }}
+          title={usuario.rol === "ADMINISTRATIVO" ? "Administrativo" : "Comercial"}
         >
-          Registrar una compra
-        </Link>
+          {usuario.nombre} · {usuario.rol === "ADMINISTRATIVO" ? "ADM" : "COM"}
+        </span>
+        <form action={salir}>
+          <button
+            type="submit"
+            style={{
+              background: "transparent",
+              border: 0,
+              padding: "6px 2px",
+              cursor: "pointer",
+              font: "400 13px var(--font-plex-sans), sans-serif",
+              color: "#c8c0ad",
+            }}
+          >
+            Salir
+          </button>
+        </form>
       </div>
     </header>
   );

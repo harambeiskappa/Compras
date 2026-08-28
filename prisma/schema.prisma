@@ -70,6 +70,9 @@ model Entidad {
   reportesComoConsignatario ReporteCompra[] @relation("ConsignatarioDeReporte")
   reportesComoPersona       ReporteCompra[] @relation("PersonaDeReporte")
 
+  /// Cuentas cuya persona compradora se precarga con esta entidad.
+  cuentas Usuario[] @relation("CuentaDeEntidad")
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -150,6 +153,56 @@ model CategoriaSinonimo {
   @@map("categoria_sinonimo")
 }
 
+// ---------- Cuentas (decisiones #2 y #4) ----------
+
+enum RolUsuario {
+  ADMINISTRATIVO
+  COMERCIAL
+}
+
+/// Una cuenta con usuario y contraseña. EL ROL VIAJA CON LA CUENTA.
+///
+/// El link que se le pasa al comercial es un atajo a la pantalla, NUNCA la
+/// credencial: si el link fuera la credencial, reenviarlo por WhatsApp
+/// regalaría el acceso, y sacárselo a uno obligaría a cambiárselo a todos.
+///
+/// No se usa Supabase Auth: sus usuarios viven en `auth.users`, fuera de este
+/// archivo, y eso rompe la regla de que el esquema esté entero en el repo con
+/// historial — la misma razón por la que está prohibido crear tablas desde el
+/// editor de Supabase. Además la app conecta como dueño y saltea RLS, así que
+/// las políticas que Supabase Auth habilita no se usarían.
+model Usuario {
+  id Int @id @default(autoincrement())
+
+  /// Guardado YA NORMALIZADO con `normalizarTexto` (trim + minúsculas) de
+  /// src/lib/normalizar.ts. No se inventa una tercera normalización: es la
+  /// misma que usan los sinónimos de categoría.
+  usuario String @unique
+
+  nombre       String
+  /// scrypt con salt aleatorio por usuario. NUNCA se selecciona hacia un
+  /// componente cliente ni viaja en una prop.
+  hashPassword String
+  rol          RolUsuario
+  activo       Boolean    @default(true)
+
+  /// Sirve para UNA sola cosa: precargar la persona compradora en el reporte.
+  /// NO unifica los dos conceptos. `ReporteCompra.personaCompradoraId`
+  /// responde «quién fue físicamente a comprar» y puede ser alguien sin
+  /// cuenta; la cuenta responde «quién cargó esto». Son dos hechos distintos,
+  /// y precargar no es ser lo mismo.
+  entidadId Int?
+  entidad   Entidad? @relation("CuentaDeEntidad", fields: [entidadId], references: [id])
+
+  comprasCreadas  Compra[]        @relation("CompraCreadaPor")
+  reportesCreados ReporteCompra[] @relation("ReporteCreadoPor")
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("usuario")
+}
+
 // ---------- El reporte del comprador (módulo 2) ----------
 
 enum EstadoReporte {
@@ -212,6 +265,10 @@ model ReporteCompra {
   recibidoEn DateTime @default(now())
 
   estado EstadoReporte @default(PENDIENTE)
+
+  /// Quién cargó este reporte. Nullable por el mismo motivo que en `Compra`.
+  creadoPorUsuarioId Int?
+  creadoPorUsuario   Usuario? @relation("ReporteCreadoPor", fields: [creadoPorUsuarioId], references: [id])
 
   /// LAS COMPRAS QUE SALIERON DE ESTE REPORTE.
   ///
@@ -287,6 +344,11 @@ model Compra {
   /// Darwash la oficina accede a los remitos directamente.
   reporteId Int?
   reporte   ReporteCompra? @relation(fields: [reporteId], references: [id])
+
+  /// Quién cargó esta compra. Nullable a propósito: las cargadas antes de que
+  /// existieran las cuentas no tienen autor, y eso es «s/d», no «oficina».
+  creadoPorUsuarioId Int?
+  creadoPorUsuario   Usuario? @relation("CompraCreadaPor", fields: [creadoPorUsuarioId], references: [id])
 
   // La comisión NO vive acá: se aplica por renglón, no por compra. Está en
   // `Lote.comision` — ver la nota ahí sobre por qué el total no se guarda.

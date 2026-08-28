@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
 import "./globals.css";
 import { Encabezado } from "@/componentes/Encabezado";
+import { usuarioActual } from "@/lib/auth";
 
 const plexSans = IBM_Plex_Sans({
   variable: "--font-plex-sans",
@@ -21,11 +22,15 @@ export const metadata: Metadata = {
   description: "Registro de la compra de hacienda",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // La sesión se lee acá una sola vez y baja al encabezado. `usuarioActual`
+  // consulta la base: el rol y el `activo` no salen de la cookie.
+  const usuario = await usuarioActual();
+
   return (
     <html lang="es" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body>
-        <Encabezado />
+        <Encabezado usuario={usuario} />
         {children}
         <div style={{ height: 70 }} />
       </body>

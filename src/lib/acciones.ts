@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import type { RolEntidad } from "@/generated/prisma/enums";
+import { exigir, SinPermiso } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizarNombre } from "@/lib/normalizar";
 import {
@@ -17,7 +18,20 @@ import {
  * Las server actions son alcanzables por POST directo, no solo desde la
  * pantalla. Toda validación vive acá y no en el formulario: lo del cliente es
  * comodidad, esto es la regla.
+ *
+ * LOS PERMISOS TAMBIÉN. Esconder un botón no es un permiso — en este proyecto
+ * ya se invocó una acción por POST directo contra producción para probar las
+ * validaciones del módulo 1. Cada acción que escribe empieza con `exigir(...)`.
+ *
+ * COMERCIAL crea y ve sus propios reportes; no crea, no edita ni borra compras,
+ * entidades ni establecimientos. Todo lo de este archivo es, por ahora, de
+ * ADMINISTRATIVO.
  */
+
+/** Convierte un `SinPermiso` en un resultado, en vez de dejarlo explotar. */
+function sinPermiso(e: unknown): { ok: false; errores: string[] } | null {
+  return e instanceof SinPermiso ? { ok: false, errores: [e.message] } : null;
+}
 
 export type DatosCompra = {
   fecha: string;
@@ -63,6 +77,15 @@ async function existe(id: number | null): Promise<boolean> {
 }
 
 export async function crearCompra(datos: DatosCompra): Promise<Resultado> {
+  let usuario;
+  try {
+    usuario = await exigir("ADMINISTRATIVO");
+  } catch (e) {
+    const r = sinPermiso(e);
+    if (r) return r;
+    throw e;
+  }
+
   const errores: string[] = [];
 
   // --- los tres obligatorios ---
@@ -128,6 +151,9 @@ export async function crearCompra(datos: DatosCompra): Promise<Resultado> {
       personaCompradoraId: datos.personaCompradoraId,
       plazaLugar: oNulo(datos.plazaLugar),
       observaciones: oNulo(datos.observaciones),
+      // Quién cargó esto. Es lo que destraba el «Cargada el … · <persona>» del
+      // detalle, que hasta ahora no se mostraba porque no había dato.
+      creadoPorUsuarioId: usuario.id,
     },
     select: { id: true },
   });
@@ -159,6 +185,14 @@ export async function guardarRol(
   campo: CampoEntidad,
   entidadId: number | null
 ): Promise<Resultado> {
+  try {
+    await exigir("ADMINISTRATIVO");
+  } catch (e) {
+    const r = sinPermiso(e);
+    if (r) return r;
+    throw e;
+  }
+
   const def = CAMPOS_ENTIDAD[campo];
   if (!def) return { ok: false, errores: ["Campo desconocido."] };
 
@@ -198,6 +232,14 @@ export async function guardarDato(
   campo: "fecha" | "plazaLugar" | "observaciones",
   valor: string | null
 ): Promise<Resultado> {
+  try {
+    await exigir("ADMINISTRATIVO");
+  } catch (e) {
+    const r = sinPermiso(e);
+    if (r) return r;
+    throw e;
+  }
+
   const limpio = oNulo(valor);
 
   if (campo === "fecha") {
@@ -237,6 +279,9 @@ export async function buscarEntidades(
   rol: RolEntidad,
   busqueda: string
 ): Promise<EstadoCombo> {
+  // Leer el padrón también exige sesión: es información del negocio.
+  await exigir();
+
   const { delRol, otras } = await entidadesParaSelector(rol, busqueda);
   const q = busqueda.trim();
   const todas = [...delRol, ...otras];
@@ -264,6 +309,7 @@ export async function crearEntidad(
   rol: RolEntidad
 ): Promise<ResultadoCrear> {
   try {
+    await exigir("ADMINISTRATIVO");
     const r = await crearEntidadConRol(nombre, rol);
     refrescar("/compras");
     return { ok: true, ...r };

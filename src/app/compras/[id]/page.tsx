@@ -25,6 +25,7 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
       vendedor: { select: { id: true, nombre: true } },
       hotelero: { select: { id: true, nombre: true } },
       personaCompradora: { select: { id: true, nombre: true } },
+      creadoPorUsuario: { select: { nombre: true } },
     },
   });
 
@@ -42,6 +43,9 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
     observaciones: c.observaciones,
     creadoEn: c.creadoEn.toISOString(),
     actualizadoEn: c.actualizadoEn.toISOString(),
+    // Nullable a propósito: lo cargado antes de que existieran las cuentas no
+    // tiene autor, y eso es «s/d». Poner «oficina» fijo sería inventar el dato.
+    creadoPor: c.creadoPorUsuario?.nombre ?? null,
   };
 
   /*

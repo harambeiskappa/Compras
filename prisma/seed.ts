@@ -531,6 +531,46 @@ async function sembrar(prisma: Cliente) {
     });
   }
 
+  // ---------- 4b. La primera cuenta ----------
+  //
+  // Un solo ADMINISTRATIVO para poder entrar la primera vez. La contraseña sale
+  // de ADMIN_INICIAL_PASSWORD y NO tiene valor por defecto: una contraseña por
+  // defecto en un repo es una contraseña pública.
+  //
+  // Si ya hay una cuenta con ese usuario, no se toca nada y no hace falta la
+  // variable: el seed es idempotente y correrlo de nuevo no debe pedir un
+  // secreto que ya se usó. La contraseña NO se pisa — cambiarla es una acción
+  // deliberada, no un efecto de resembrar catálogos.
+  const usuarioAdmin = normalizarTexto(process.env.ADMIN_INICIAL_USUARIO ?? "admin");
+  const yaHayAdmin = await prisma.usuario.findUnique({
+    where: { usuario: usuarioAdmin },
+    select: { id: true },
+  });
+
+  let cuentaCreada = false;
+  if (!yaHayAdmin) {
+    const password = process.env.ADMIN_INICIAL_PASSWORD;
+    if (!password || password.length < 12) {
+      throw new Error(
+        "Falta ADMIN_INICIAL_PASSWORD (o tiene menos de 12 caracteres) y no hay " +
+          `ninguna cuenta "${usuarioAdmin}" todavía. El seed NO inventa una ` +
+          "contraseña por defecto: una contraseña por defecto en un repo es una " +
+          "contraseña pública. Definila y volvé a correr."
+      );
+    }
+    const { hashearPassword } = await import("@/lib/password");
+    await prisma.usuario.create({
+      data: {
+        usuario: usuarioAdmin,
+        nombre: process.env.ADMIN_INICIAL_NOMBRE ?? "Administración",
+        hashPassword: await hashearPassword(password),
+        rol: "ADMINISTRATIVO",
+      },
+    });
+    cuentaCreada = true;
+  }
+
+
   // ---------- 5. Reporte ----------
   const entidadesFinal = await prisma.entidad.count();
   const prefijosFinal = await prisma.prefijoTropa.count();
@@ -547,6 +587,14 @@ async function sembrar(prisma: Cliente) {
   console.log(
     `  esPropio rellenado / preservado: ${esPropioRellenado} / ${esPropioPreservado}`
   );
+
+  const cuentas = await prisma.usuario.count();
+  console.log("\n=== cuentas ===");
+  console.log(`  en la base        : ${cuentas}`);
+  console.log(`  creada ahora      : ${cuentaCreada ? usuarioAdmin : "ninguna"}`);
+  if (!cuentaCreada) {
+    console.log(`  "${usuarioAdmin}" ya existía; su contraseña no se toca.`);
+  }
 
   const establecimientosFinal = await prisma.establecimiento.count();
   console.log("\n=== establecimientos ===");

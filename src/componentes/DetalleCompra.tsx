@@ -19,6 +19,8 @@ export type CompraDetalle = {
   observaciones: string | null;
   creadoEn: string;
   actualizadoEn: string;
+  /** Null = cargada antes de que existieran las cuentas. Es «s/d». */
+  creadoPor: string | null;
 };
 
 type DefRol = {
@@ -370,8 +372,10 @@ export function DetalleCompra({ compra }: { compra: CompraDetalle }) {
           </div>
 
           {/*
-            Sin «· oficina»: hay creadoEn y actualizadoEn pero ninguna atribución
-            de usuario. Poner una fija sería inventar el dato.
+            La atribución sale de `creadoPorUsuario`, no de un texto fijo. Si es
+            null —lo cargado antes de que existieran las cuentas— se muestra
+            «s/d» y no «oficina»: no saber quién lo cargó es un hecho, y
+            escribir un nombre plausible ahí sería inventarlo.
           */}
           <div
             style={{
@@ -382,7 +386,8 @@ export function DetalleCompra({ compra }: { compra: CompraDetalle }) {
               borderRadius: 2,
             }}
           >
-            Cargada el {aLargo(compra.creadoEn)}
+            Cargada el {aLargo(compra.creadoEn)} ·{" "}
+            {compra.creadoPor ?? <span className="sd">s/d</span>}
             <br />
             Último cambio: {aLargo(compra.actualizadoEn)}
           </div>
