@@ -1,12 +1,18 @@
 /**
- * Verificación de auth: los siete puntos del prompt.
+ * Verificación de auth: los siete puntos del prompt `docs/prompt-auth-modulo-2.md`.
  *
  * Corre contra el servidor de verdad (por defecto local; con --produccion, el
  * de Vercel) y hace POST directo a las server actions, salteando la pantalla.
  * Es la única forma de comprobar que el permiso vive en el servidor: esconder
  * un botón no es un permiso.
  *
- * Crea una cuenta COMERCIAL de prueba y la borra al final.
+ * LAS COOKIES SE OBTIENEN ENTRANDO POR EL LOGIN, no firmándolas acá. Antes se
+ * firmaban con el `SESION_SECRETO` de `.env.local`, que es el de Development y
+ * NO es el de Production —está marcado Sensitive en Vercel y no se puede leer—,
+ * así que contra producción el proxy las rechazaba y los puntos 1 a 4 no
+ * llegaban a correr. El porqué completo está en `scripts/login-http.ts`.
+ *
+ * Crea cuentas de prueba y las borra al final.
  *
  * Correr:  npx tsx scripts/verificar-auth.ts
  *          npx tsx scripts/verificar-auth.ts --produccion
@@ -14,6 +20,8 @@
 import { createRequire } from "node:module";
 
 import { config as loadEnv } from "dotenv";
+
+import { cookiePorLogin, idDeAccion } from "./login-http";
 
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
@@ -46,30 +54,6 @@ function chequear(nombre: string, cond: boolean, detalle: string) {
   }
 }
 
-/**
- * Extrae el id de una server action del bundle servido.
- *
- * Necesita una cookie de ADMINISTRATIVO porque la ruta está protegida: sin ella
- * el proxy devuelve el login y ahí no está el bundle que se busca. Eso mismo ya
- * dice algo — la ruta no es accesible sin sesión.
- */
-async function idDeAccion(
-  ruta: string,
-  nombre: string,
-  cookie: string
-): Promise<string | null> {
-  const html = await (
-    await fetch(`${BASE}${ruta}`, { headers: { Cookie: cookie }, redirect: "manual" })
-  ).text();
-  const chunks = [...html.matchAll(/\/_next\/static\/[^"']+\.js/g)].map((m) => m[0]);
-  for (const c of [...new Set(chunks)]) {
-    const js = await (await fetch(`${BASE}${c}`)).text();
-    const m = js.match(new RegExp(`"([0-9a-f]{40,})"[^)]{0,120}${nombre}`));
-    if (m) return m[1];
-  }
-  return null;
-}
-
 async function postAccion(ruta: string, accion: string, args: unknown[], cookie?: string) {
   return fetch(`${BASE}${ruta}`, {
     method: "POST",
@@ -86,48 +70,67 @@ async function postAccion(ruta: string, accion: string, args: unknown[], cookie?
 async function main() {
   const { prisma } = await import("@/lib/prisma");
   const { hashearPassword } = await import("@/lib/password");
-  const { firmarSesion, COOKIE_SESION } = await import("@/lib/sesion");
+  const { DURACION_SESION } = await import("@/lib/sesion");
 
   console.log(`\nContra: ${BASE}\n`);
 
   // --- cuentas de prueba ---
   const marca = "prueba-auth-" + Date.now();
+  const USUARIO_ADM = marca + "-adm";
+  const USUARIO_COM = marca + "-com";
+  const USUARIO_OFF = marca + "-off";
+  const PASS = "contrasena-de-prueba-1";
+
+  // Un administrativo propio en vez de la cuenta real: así el script no
+  // necesita saber la contraseña de nadie, y no hay forma de que ensucie una
+  // cuenta de verdad.
+  await prisma.usuario.create({
+    data: {
+      usuario: USUARIO_ADM,
+      nombre: "Administrativo de prueba",
+      hashPassword: await hashearPassword(PASS),
+      rol: "ADMINISTRATIVO",
+    },
+    select: { id: true },
+  });
   const comercial = await prisma.usuario.create({
     data: {
-      usuario: marca,
+      usuario: USUARIO_COM,
       nombre: "Comercial de prueba",
-      hashPassword: await hashearPassword("no-importa-12345"),
+      hashPassword: await hashearPassword(PASS),
       rol: "COMERCIAL",
     },
     select: { id: true },
   });
+  // Nace ACTIVA para poder entrar y quedarse con una cookie legítima; se
+  // desactiva después. Es la única forma de tener «cookie válida + cuenta
+  // desactivada», que es justo lo que el punto 4 quiere probar.
   const inactivo = await prisma.usuario.create({
     data: {
-      usuario: marca + "-off",
-      nombre: "Cuenta desactivada",
-      hashPassword: await hashearPassword("no-importa-12345"),
+      usuario: USUARIO_OFF,
+      nombre: "Cuenta que se va a desactivar",
+      hashPassword: await hashearPassword(PASS),
       rol: "ADMINISTRATIVO",
-      activo: false,
     },
     select: { id: true },
   });
 
-  const admin = await prisma.usuario.findFirstOrThrow({
-    where: { rol: "ADMINISTRATIVO", activo: true },
-    select: { id: true },
-  });
-  const cookieAdmin = `${COOKIE_SESION}=${await firmarSesion(admin.id)}`;
-  const cookieComercial = `${COOKIE_SESION}=${await firmarSesion(comercial.id)}`;
-  const cookieInactivo = `${COOKIE_SESION}=${await firmarSesion(inactivo.id)}`;
-
-  const firmada = await firmarSesion(comercial.id);
-  // Un byte de la firma cambiado: el payload queda igual, la firma no valida.
-  const ultima = firmada.slice(-1);
-  const alterada = firmada.slice(0, -1) + (ultima === "A" ? "B" : "A");
-  const cookieAlterada = `${COOKIE_SESION}=${alterada}`;
-
   try {
-    const accion = await idDeAccion("/compras/nueva", "crearCompra", cookieAdmin);
+    const sesionAdmin = await cookiePorLogin(BASE, USUARIO_ADM, PASS);
+    const cookieAdmin = sesionAdmin.cookie;
+    const cookieComercial = (await cookiePorLogin(BASE, USUARIO_COM, PASS)).cookie;
+
+    const cookieInactivo = (await cookiePorLogin(BASE, USUARIO_OFF, PASS)).cookie;
+    await prisma.usuario.update({ where: { id: inactivo.id }, data: { activo: false } });
+
+    // Un byte de la firma cambiado: el payload queda igual, la firma no valida.
+    const valor = cookieComercial.split("=").slice(1).join("=");
+    const ultima = valor.slice(-1);
+    const cookieAlterada = `compras_sesion=${valor.slice(0, -1)}${
+      ultima === "A" ? "B" : "A"
+    }`;
+
+    const accion = await idDeAccion(BASE, "/compras/nueva", "crearCompra", cookieAdmin);
     if (!accion) {
       chequear("se encontró el id de crearCompra en el bundle", false, "no apareció");
     } else {
@@ -161,7 +164,7 @@ async function main() {
       chequear(
         "rechazada",
         !creo1 && /ok":false|ADMINISTRATIVO|COMERCIAL/.test(t1),
-        creo1 ? "CREÓ LA COMPRA" : (t1.match(/\{"ok":false[^}]*\}/)?.[0] ?? "no creó nada"),
+        creo1 ? "CREÓ LA COMPRA" : (t1.match(/\{"ok":false[^}]*\}/)?.[0] ?? "no creó nada")
       );
 
       // ---------------------------------------------------------------- 2
@@ -172,18 +175,16 @@ async function main() {
       chequear(
         "rechazada",
         !creo2,
-        creo2 ? "CREÓ LA COMPRA" : `HTTP ${r2.status}, ${t2.match(/\{"ok":false[^}]*\}/)?.[0] ?? "sin crear"}`,
+        creo2
+          ? "CREÓ LA COMPRA"
+          : `HTTP ${r2.status}, ${t2.match(/\{"ok":false[^}]*\}/)?.[0] ?? "sin crear"}`
       );
 
       // ---------------------------------------------------------------- 3
       console.log("\n=== 3. Firma alterada en un byte ===");
       const r3 = await postAccion("/compras/nueva", accion, datos, cookieAlterada);
       const creo3 = (await prisma.compra.count()) > antes;
-      chequear(
-        "rechazada",
-        !creo3,
-        creo3 ? "CREÓ LA COMPRA" : `HTTP ${r3.status}, sin crear`,
-      );
+      chequear("rechazada", !creo3, creo3 ? "CREÓ LA COMPRA" : `HTTP ${r3.status}, sin crear`);
 
       // ---------------------------------------------------------------- 4
       console.log("\n=== 4. Cuenta activo=false con cookie válida ===");
@@ -192,20 +193,31 @@ async function main() {
       chequear(
         "rechazada",
         !creo4,
-        creo4 ? "CREÓ LA COMPRA" : `HTTP ${r4.status}, sin crear`,
+        creo4
+          ? "CREÓ LA COMPRA"
+          : `HTTP ${r4.status}, sin crear (la cookie la firmó el servidor al entrar)`
       );
     }
 
     // ---------------------------------------------------------------- 5
     console.log("\n=== 5. La sesión sobrevive a cerrar el navegador ===");
-    const { leerSesion, DURACION_SESION } = await import("@/lib/sesion");
-    const leida = await leerSesion(firmada);
-    const dias = leida ? (leida.exp - Math.floor(Date.now() / 1000)) / 86400 : 0;
+    // Se mira el Set-Cookie QUE MANDÓ EL SERVIDOR, no lo que calcula una
+    // función local: lo que decide si la cookie sobrevive a cerrar el navegador
+    // es el Max-Age que viajó por la red.
+    const maxAge = Number(sesionAdmin.crudo.match(/Max-Age=(\d+)/i)?.[1] ?? 0);
+    const dias = maxAge / 86400;
+    const persistente = maxAge >= DURACION_SESION - 60;
+    // Y se comprueba que sirva en una petición nueva, que es lo que hace un
+    // navegador al reabrirse: mandar la cookie guardada por otra conexión.
+    const reabierto = await fetch(`${BASE}/compras`, {
+      headers: { Cookie: cookieAdmin },
+      redirect: "manual",
+    });
     chequear(
-      "la cookie es persistente y dura 30 días",
-      !!leida && dias > 29,
-      `vence en ${dias.toFixed(1)} días (maxAge=${DURACION_SESION}s). La cookie ` +
-        "tiene maxAge, no es de sesión: cerrar el navegador no la borra.",
+      "la cookie es persistente, dura 30 días, y sigue entrando en una petición nueva",
+      persistente && reabierto.status === 200,
+      `Max-Age=${maxAge}s (${dias.toFixed(1)} días) · petición nueva: HTTP ` +
+        `${reabierto.status}. Tiene Max-Age, no es de sesión: cerrar el navegador no la borra.`
     );
 
     // ---------------------------------------------------------------- 6
@@ -216,7 +228,7 @@ async function main() {
     chequear(
       "/api/salud responde 200 y no redirige a vercel.com",
       r6.status === 200 && !aVercel && cuerpo.includes('"ok":true'),
-      `HTTP ${r6.status}${aVercel ? " -> " + r6.headers.get("location") : ""} ${cuerpo.slice(0, 40)}`,
+      `HTTP ${r6.status}${aVercel ? " -> " + r6.headers.get("location") : ""} ${cuerpo.slice(0, 40)}`
     );
 
     const r6b = await fetch(`${BASE}/compras`, { redirect: "manual" });
@@ -224,28 +236,39 @@ async function main() {
     chequear(
       "una ruta protegida sin sesión va a /ingresar, no a vercel.com",
       !loc.includes("vercel.com"),
-      `HTTP ${r6b.status} -> ${loc || "(sin redirect)"}`,
+      `HTTP ${r6b.status} -> ${loc || "(sin redirect)"}`
     );
 
     // ---------------------------------------------------------------- 7
     console.log("\n=== 7. El hash no sale por HTTP ===");
     const paginas = ["/ingresar", "/compras", "/compras/nueva"];
     const conHash = await prisma.usuario.findFirstOrThrow({
-      where: { rol: "ADMINISTRATIVO", activo: true },
+      where: { usuario: USUARIO_ADM },
       select: { hashPassword: true },
     });
     const trozo = conHash.hashPassword.split("$")[2].slice(0, 24);
     let filtrado: string | null = null;
+    const vacias: string[] = [];
     for (const ruta of paginas) {
-      const cuerpo = await (
-        await fetch(`${BASE}${ruta}`, { headers: { Cookie: cookieAdmin }, redirect: "manual" })
-      ).text();
-      if (cuerpo.includes(trozo) || cuerpo.includes("hashPassword")) filtrado = ruta;
+      const res = await fetch(`${BASE}${ruta}`, {
+        headers: { Cookie: cookieAdmin },
+        redirect: "manual",
+      });
+      const html = await res.text();
+      // /ingresar con sesión válida rebota a /compras: ahí el 307 es correcto.
+      // En el resto, un redirect querría decir que no se miró ninguna página —
+      // un verde que no probó nada, que es peor que un rojo.
+      if (res.status !== 200 && ruta !== "/ingresar") vacias.push(`${ruta} HTTP ${res.status}`);
+      if (html.includes(trozo) || html.includes("hashPassword")) filtrado = ruta;
     }
     chequear(
       "ni el hash ni la palabra hashPassword aparecen en el HTML servido",
-      filtrado === null,
-      filtrado ? `APARECE EN ${filtrado}` : `revisadas: ${paginas.join(", ")}`,
+      filtrado === null && vacias.length === 0,
+      filtrado
+        ? `APARECE EN ${filtrado}`
+        : vacias.length
+          ? `NO SE PUDO MIRAR: ${vacias.join(", ")}`
+          : `revisadas con 200: ${paginas.join(", ")}`
     );
   } finally {
     await prisma.usuario.deleteMany({ where: { usuario: { startsWith: marca } } });

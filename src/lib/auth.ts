@@ -40,12 +40,32 @@ export async function usuarioActual(): Promise<UsuarioSesion | null> {
 
   const u = await prisma.usuario.findUnique({
     where: { id: sesion.uid },
-    select: { id: true, usuario: true, nombre: true, rol: true, activo: true, entidadId: true },
+    select: {
+      id: true,
+      usuario: true,
+      nombre: true,
+      rol: true,
+      activo: true,
+      entidadId: true,
+      credencialesDesde: true,
+    },
   });
   if (!u || !u.activo) return null;
 
-  const { activo: _activo, ...sinActivo } = u;
-  return sinActivo;
+  // La sesión emitida ANTES del último cambio de contraseña queda afuera. Sin
+  // esto, cambiar la contraseña no echaba a nadie: la cookie dura 30 días y
+  // solo afirma el id, así que la sesión abierta en otro dispositivo seguía
+  // viva un mes más — justo lo que uno quiere cortar cuando sospecha algo.
+  //
+  // Los dos lados se comparan en SEGUNDOS ENTEROS: `iat` ya viene floorado y
+  // `credencialesDesde` tiene milisegundos. Sin el floor, la cookie emitida en
+  // el mismo segundo del cambio se ve hasta 999 ms más vieja que el corte, y
+  // echaría a la persona del dispositivo donde acaba de cambiar la contraseña.
+  const corte = Math.floor(u.credencialesDesde.getTime() / 1000);
+  if (sesion.iat < corte) return null;
+
+  const { activo: _activo, credencialesDesde: _desde, ...limpio } = u;
+  return limpio;
 }
 
 /** Error de permisos. Lo atrapa cada server action y lo devuelve como mensaje. */

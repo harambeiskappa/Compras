@@ -550,15 +550,23 @@ async function sembrar(prisma: Cliente) {
   let cuentaCreada = false;
   if (!yaHayAdmin) {
     const password = process.env.ADMIN_INICIAL_PASSWORD;
-    if (!password || password.length < 12) {
+    // El mínimo NO se repite acá: sale de `validarPassword`, que es el mismo
+    // criterio que aplican la creación de cuentas y el cambio de contraseña.
+    const { hashearPassword, validarPassword, LARGO_MINIMO_PASSWORD } = await import(
+      "@/lib/password"
+    );
+    const falta =
+      `No hay ninguna cuenta "${usuarioAdmin}" todavía y el seed NO inventa una ` +
+      "contraseña por defecto: una contraseña por defecto en un repo es una " +
+      "contraseña pública.";
+    if (!password) {
       throw new Error(
-        "Falta ADMIN_INICIAL_PASSWORD (o tiene menos de 12 caracteres) y no hay " +
-          `ninguna cuenta "${usuarioAdmin}" todavía. El seed NO inventa una ` +
-          "contraseña por defecto: una contraseña por defecto en un repo es una " +
-          "contraseña pública. Definila y volvé a correr."
+        `Falta ADMIN_INICIAL_PASSWORD (mínimo ${LARGO_MINIMO_PASSWORD} ` +
+          `caracteres). ${falta} Definila y volvé a correr.`
       );
     }
-    const { hashearPassword } = await import("@/lib/password");
+    const problema = validarPassword(password);
+    if (problema) throw new Error(`ADMIN_INICIAL_PASSWORD: ${problema} ${falta}`);
     await prisma.usuario.create({
       data: {
         usuario: usuarioAdmin,

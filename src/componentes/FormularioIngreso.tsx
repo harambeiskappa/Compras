@@ -1,27 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState } from "react";
 
-import { ingresar } from "@/lib/acciones-auth";
+import { ingresar, type EstadoIngreso } from "@/lib/acciones-auth";
 
+/**
+ * Vive acá y no en `acciones-auth.ts` porque ése es un archivo `"use server"`:
+ * solo puede exportar funciones async. Exportar este objeto desde ahí compila y
+ * buildea sin una sola queja, y recién revienta en runtime — rompiendo la carga
+ * del módulo entero, o sea TODAS las acciones, no solo ésta.
+ */
+const INICIAL: EstadoIngreso = { error: null, usuario: "" };
+
+/**
+ * El botón NO puede quedar muerto.
+ *
+ * La versión anterior tenía `setEntrando(false)` después del `await` y sin
+ * `try/finally`: cualquier excepción de la acción —la de SESION_SECRETO
+ * faltante en Production, un corte de red, lo que sea— dejaba el botón
+ * deshabilitado para siempre y sin decir nada. Media hora mirando una pantalla
+ * que no tenía forma de contar qué le pasaba.
+ *
+ * Por eso el «entrando» sale del `pending` de `useActionState` y no de un
+ * `useState` propio: React lo baja solo cuando la acción termina, salga bien o
+ * mal, y no hay ninguna rama del código que pueda olvidarse de apagarlo. La
+ * acción, además, atrapa lo inesperado y lo devuelve como mensaje genérico.
+ *
+ * VALE PARA TODO EL MÓDULO 2: ningún botón puede quedar muerto por una
+ * excepción que nadie muestra. Va a importar mucho más cuando el envío pase por
+ * la cola offline y falle por falta de señal, que ahí es el caso normal.
+ *
+ * Y va con `<form action={...}>` en vez de un `onSubmit`: la acción redirige, y
+ * `redirect()` quiere correr dentro de una transición, que es lo que este hook
+ * hace por su cuenta.
+ */
 export function FormularioIngreso({ volver }: { volver: string }) {
-  const [usuario, setUsuario] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [entrando, setEntrando] = useState(false);
-
-  async function enviar(e: React.FormEvent) {
-    e.preventDefault();
-    setEntrando(true);
-    setError(null);
-    // Si sale bien, la acción redirige y esto no vuelve.
-    const r = await ingresar(usuario, password, volver);
-    setEntrando(false);
-    if (r && !r.ok) setError(r.error);
-  }
+  const [estado, accion, entrando] = useActionState(ingresar, INICIAL);
 
   return (
-    <form onSubmit={enviar} style={{ marginTop: 30, display: "grid", gap: 18 }}>
+    <form action={accion} style={{ marginTop: 30, display: "grid", gap: 18 }}>
+      <input type="hidden" name="volver" value={volver} />
+
       <div style={{ display: "grid", gap: 7 }}>
         <label
           htmlFor="usuario"
@@ -35,8 +54,11 @@ export function FormularioIngreso({ volver }: { volver: string }) {
           autoComplete="username"
           autoCapitalize="none"
           autoFocus
-          value={usuario}
-          onChange={(e) => setUsuario(e.target.value)}
+          // Vuelve tipeado tal cual: `<form action>` resetea los campos al
+          // terminar, y reescribir el usuario tras cada intento es gratis de
+          // evitar. La contraseña no vuelve, a propósito.
+          defaultValue={estado.usuario}
+          disabled={entrando}
           className="campo"
         />
       </div>
@@ -53,14 +75,14 @@ export function FormularioIngreso({ volver }: { volver: string }) {
           name="password"
           type="password"
           autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          disabled={entrando}
           className="campo"
         />
       </div>
 
-      {error && (
+      {estado.error && (
         <div
+          role="alert"
           style={{
             padding: "11px 13px",
             background: "var(--aviso-claro)",
@@ -70,7 +92,7 @@ export function FormularioIngreso({ volver }: { volver: string }) {
             font: "400 14px/1.5 var(--font-plex-sans), sans-serif",
           }}
         >
-          {error}
+          {estado.error}
         </div>
       )}
 
@@ -79,7 +101,7 @@ export function FormularioIngreso({ volver }: { volver: string }) {
         disabled={entrando}
         style={{
           padding: "12px 20px",
-          cursor: "pointer",
+          cursor: entrando ? "progress" : "pointer",
           font: "500 15px var(--font-plex-sans), sans-serif",
           color: "var(--papel)",
           background: "var(--verde)",

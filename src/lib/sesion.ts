@@ -31,6 +31,18 @@ export type Sesion = {
   uid: number;
   /** Vencimiento, en segundos desde epoch. */
   exp: number;
+  /**
+   * Emisión, en segundos desde epoch. La usa `usuarioActual()` para descartar
+   * la sesión anterior al último cambio de contraseña (`credencialesDesde`).
+   *
+   * VA EXPLÍCITA Y NO SE DERIVA DE `exp`. Derivarla como `exp − DURACION_SESION`
+   * da el valor exacto, pero solo mientras esa constante no cambie: el día que
+   * alguien la mueva, TODA cookie ya emitida cambia de fecha de emisión sin que
+   * nadie la haya tocado. Alargarla las envejece y echaría a todos; acortarla
+   * las rejuvenece, y una cookie robada sobreviviría al cambio de contraseña
+   * que existe para matarla. Ese es el lado peligroso, y es silencioso.
+   */
+  iat: number;
 };
 
 /**
@@ -74,9 +86,11 @@ async function clave(): Promise<CryptoKey> {
 
 /** Devuelve `<payload>.<firma>`, las dos partes en base64url. */
 export async function firmarSesion(uid: number): Promise<string> {
+  const ahora = Math.floor(Date.now() / 1000);
   const sesion: Sesion = {
     uid,
-    exp: Math.floor(Date.now() / 1000) + DURACION_SESION,
+    exp: ahora + DURACION_SESION,
+    iat: ahora,
   };
   const payload = aBase64Url(new TextEncoder().encode(JSON.stringify(sesion)));
   const firma = await crypto.subtle.sign(
@@ -111,10 +125,20 @@ export async function leerSesion(cookie: string | undefined): Promise<Sesion | n
     );
     if (!ok) return null;
 
-    const sesion = JSON.parse(new TextDecoder().decode(deBase64Url(payload))) as Sesion;
-    if (typeof sesion.uid !== "number" || typeof sesion.exp !== "number") return null;
-    if (sesion.exp < Math.floor(Date.now() / 1000)) return null;
-    return sesion;
+    const crudo = JSON.parse(
+      new TextDecoder().decode(deBase64Url(payload))
+    ) as Partial<Sesion>;
+    if (typeof crudo.uid !== "number" || typeof crudo.exp !== "number") return null;
+    if (crudo.exp < Math.floor(Date.now() / 1000)) return null;
+
+    // Las cookies firmadas antes de que `iat` existiera no lo traen. Para ésas
+    // se deriva de `exp`, que es exactamente cómo se las firmó. No se las
+    // invalida: echar a todo el mundo por agregar un campo sería un costo
+    // gratuito, y encima el peor día para pedir un login es el del deploy.
+    const iat =
+      typeof crudo.iat === "number" ? crudo.iat : crudo.exp - DURACION_SESION;
+
+    return { uid: crudo.uid, exp: crudo.exp, iat };
   } catch {
     return null;
   }

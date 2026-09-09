@@ -24,6 +24,21 @@ const scryptAsync = promisify(scrypt) as (
 const LARGO_SALT = 16;
 const LARGO_CLAVE = 64;
 
+/**
+ * El mínimo de caracteres. UN SOLO criterio, en UN SOLO lugar: lo usan el seed,
+ * la creación de cuentas desde `/usuarios` y el cambio de la propia contraseña.
+ * Si el número vive en tres archivos, en seis meses son tres números.
+ */
+export const LARGO_MINIMO_PASSWORD = 12;
+
+/** Devuelve el problema en castellano, o `null` si la contraseña pasa. */
+export function validarPassword(password: string): string | null {
+  if (password.length < LARGO_MINIMO_PASSWORD) {
+    return `La contraseña tiene que tener al menos ${LARGO_MINIMO_PASSWORD} caracteres.`;
+  }
+  return null;
+}
+
 /** `scrypt$<salt en hex>$<derivada en hex>`. El salt viaja con el hash. */
 export async function hashearPassword(password: string): Promise<string> {
   const salt = randomBytes(LARGO_SALT);

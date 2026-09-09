@@ -186,6 +186,18 @@ model Usuario {
   rol          RolUsuario
   activo       Boolean    @default(true)
 
+  /// Desde cuándo valen las credenciales actuales. Se actualiza al cambiar la
+  /// contraseña, y `usuarioActual()` descarta toda sesión emitida antes.
+  ///
+  /// Lo obliga la cookie de 30 días: sin esto, cambiar la contraseña no echaba
+  /// a nadie — la sesión abierta en otro dispositivo seguía viva un mes más,
+  /// que es exactamente lo que uno quiere cortar cuando sospecha algo.
+  ///
+  /// NOT NULL con justificación: no hay «s/d» posible. Toda cuenta tiene un
+  /// momento desde el cual sus credenciales son las actuales; para la que
+  /// nunca cambió la contraseña, ese momento es su creación.
+  credencialesDesde DateTime @default(now())
+
   /// Sirve para UNA sola cosa: precargar la persona compradora en el reporte.
   /// NO unifica los dos conceptos. `ReporteCompra.personaCompradoraId`
   /// responde «quién fue físicamente a comprar» y puede ser alguien sin

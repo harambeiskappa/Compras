@@ -92,6 +92,18 @@ export function Encabezado({ usuario }: { usuario: UsuarioSesion | null }) {
         */}
         {usuario.rol === "ADMINISTRATIVO" && (
           <Link
+            href="/usuarios"
+            style={{
+              font: "500 13px var(--font-plex-sans), sans-serif",
+              color: "#c8c0ad",
+              textDecoration: "none",
+            }}
+          >
+            Usuarios
+          </Link>
+        )}
+        {usuario.rol === "ADMINISTRATIVO" && (
+          <Link
             href="/compras/nueva"
             style={{
               padding: "7px 14px",
@@ -107,15 +119,19 @@ export function Encabezado({ usuario }: { usuario: UsuarioSesion | null }) {
           </Link>
         )}
         <div style={{ width: 1, height: 20, background: "#3a352a" }} />
-        <span
+        {/* El nombre lleva a la propia cuenta: es donde cualquier rol cambia su
+            contraseña, incluido el comercial, que no entra a /usuarios. */}
+        <Link
+          href="/mi-cuenta"
           style={{
             font: "400 12px/1 var(--font-plex-mono), monospace",
             color: "#8d8574",
+            textDecoration: "none",
           }}
           title={usuario.rol === "ADMINISTRATIVO" ? "Administrativo" : "Comercial"}
         >
           {usuario.nombre} · {usuario.rol === "ADMINISTRATIVO" ? "ADM" : "COM"}
-        </span>
+        </Link>
         <form action={salir}>
           <button
             type="submit"

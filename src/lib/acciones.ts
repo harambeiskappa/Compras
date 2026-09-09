@@ -1,11 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 import type { RolEntidad } from "@/generated/prisma/enums";
 import { exigir, SinPermiso } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizarNombre } from "@/lib/normalizar";
+import { refrescar } from "@/lib/refrescar";
 import {
   asegurarRol,
   crearEntidadConRol,
@@ -53,22 +52,6 @@ const SIN_DATO_OBLIGATORIO =
 function oNulo(v: string | null | undefined): string | null {
   const t = (v ?? "").trim();
   return t === "" ? null : t;
-}
-
-/**
- * `revalidatePath` fuera del contexto de request de Next tira un invariant.
- * Pasa cuando estas acciones se llaman desde un script — que es como se prueba
- * que la validación vive en el servidor y no en el formulario. Ahí no hay caché
- * que invalidar, así que ese caso puntual se ignora; cualquier otro error se
- * vuelve a tirar.
- */
-function refrescar(ruta: string): void {
-  try {
-    revalidatePath(ruta);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!msg.includes("static generation store missing")) throw e;
-  }
 }
 
 async function existe(id: number | null): Promise<boolean> {

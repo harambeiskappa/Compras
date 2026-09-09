@@ -8,9 +8,11 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ---
 
-## Dónde retomamos — actualizado 2026-08-28 (auth implementada)
+## Dónde retomamos — actualizado 2026-09-09
 
-**Próximo paso concreto:** el **documento de diseño de la pantalla del comprador** (`docs/diseno-modulo-2.md`), que va a Claude Design. Antes, dos cosas de cinco minutos: confirmar que `SESION_SECRETO` está en Vercel **entrando de verdad a la app** (la pantalla de ingreso carga aunque falte), y correr el seed con `ADMIN_INICIAL_PASSWORD` para tener la primera cuenta.
+**La app se puede usar: el login anda en producción.** Faltaba `SESION_SECRETO` en el entorno Production de Vercel.
+
+**Dos frentes en paralelo:** a Claude Code va `docs/prompt-usuarios-y-arreglo-login.md` (arreglo del botón clavado, los 6 puntos de verificación pendientes, y la administración de usuarios, que hoy impide darle cuenta a un comercial). De mi lado, el **documento de diseño de la pantalla del comprador** (`docs/diseno-modulo-2.md`), que va a Claude Design con las dos decisiones de dominio ya cerradas: el número de remito es opcional al lado de la foto, y el comprador puede corregir su reporte mientras esté PENDIENTE.
 
 | | |
 |---|---|
@@ -730,3 +732,123 @@ O sea que el módulo 2 no es un formulario común. Cuatro consecuencias:
 **Lo que queda por confirmar, y una trampa que encontré mirándolo.** Los otros seis puntos de la verificación exigida no vinieron reportados. Y hay uno que desde afuera **no se puede ver**: `leerSesion` devuelve null antes de tocar el secreto cuando no hay cookie, así que la pantalla de ingreso se dibuja perfecta **aunque `SESION_SECRETO` no exista en Vercel** — el error recién aparece cuando alguien aprieta «Entrar». Una pantalla de login que carga bien no prueba que el login funcione. Hay que probar entrar de verdad.
 
 **Una verruga cosmética.** La carpeta `202608282029181_adjunto_on_delete_restrict` tiene quince dígitos donde van catorce. Ordena bien igual —`…202917` < `…2029181` carácter por carácter— y renombrar una migración ya aplicada rompería la fila de `_prisma_migrations`, así que **se deja como está**. Anotado para que dentro de seis meses nadie crea que descubrió un bug.
+
+---
+
+### 2026-09-09 · Por qué no se podía entrar: una variable que estaba en un entorno y no en el otro
+
+**La causa.** `SESION_SECRETO` existía en el entorno **Development** de Vercel y no en **Production**. Como `vercel env pull` baja Development, la variable aparecía en el `.env.local` — y eso hizo que la diéramos por puesta. **Que un secreto esté en tu máquina no dice nada sobre producción.**
+
+**Por qué el síntoma era tan mudo.** Todos los caminos de error del ingreso *devuelven* un valor: usuario vacío, cuenta inexistente, cuenta desactivada, contraseña mal. El único que **tira** es `firmarSesion`, y tira justo después de validar la contraseña y justo antes de grabar la cookie. O sea que el error aparecía **solo con las credenciales correctas**. Y como `setEntrando(false)` estaba después del `await` sin `try/finally`, la excepción dejaba el botón muerto sin decir nada.
+
+**Y lo que más costó: la pantalla de ingreso cargaba perfecta sin la variable.** `leerSesion` devuelve null antes de tocar el secreto cuando no hay cookie, así que el formulario se dibujaba igual. **Una pantalla de login que carga bien no prueba que el login funcione.** Estaba anotado en la entrada del 28/08 como una trampa a chequear, y aun así no fue lo primero que miré.
+
+**Dos errores míos, para que no se repitan.** Primero deduje que la cookie se había grabado porque «todos los caminos de error devuelven» — me faltaba justamente el que tira. Segundo, verifiqué producción con `/compras` y `/ingresar`, que **no tocan la base ni el secreto**: comprobé lo único que no podía fallar. Cuando el chequeo no pasa por la pieza sospechosa, no es un chequeo.
+
+**El seed lo confirmó:** «admin ya existía; su contraseña no se toca». La cuenta estaba desde el principio.
+
+**Lo que quedó como regla:** el secreto se carga en **Production y Preview**, con la nota de cómo rotarlo escrita en el campo *Note* de Vercel.
+
+---
+
+### 2026-09-09 · Dos decisiones de dominio para la pantalla del comprador
+
+Las dos las contestó Iñaki, y las dos cambian la pantalla.
+
+**El número de remito: la foto siempre, el número si puede.** Campo opcional al lado de cada foto. Si lo tipea entra, y si no queda «s/d» y lo completa la oficina. Es la forma de la regla 1 aplicada a la carga: **el dato que se conoce entra; el que no, se ve vacío a propósito**. Hacerlo obligatorio habría sido pedirle un dato a alguien parado en un remate — y ahí la gente inventa o no carga.
+
+**El comprador puede corregir su reporte mientras la oficina no lo procese.** Una vez en PROCESADO, queda congelado. Esto tiene una consecuencia de alcance que hay que decir en voz alta: **el módulo 2 no es solo un formulario, es también una lista.** El comprador necesita ver sus reportes para poder volver a uno. Y `EstadoReporte` deja de ser una etiqueta informativa: **es lo que decide si algo se puede editar.**
+
+Las dos entran al documento de diseño como restricciones de §1, no como preguntas.
+
+---
+
+### 2026-09-09 · La administración de usuarios, que faltaba
+
+**Hoy la única forma de crear una cuenta es el seed, y no hay cómo cambiar una contraseña.** Es decir: **no se le puede dar acceso a un comercial**, que es exactamente lo que el módulo 2 necesita. Omisión del prompt de auth — pedí las cuentas y no pedí cómo se crean las siguientes.
+
+Va en `docs/prompt-usuarios-y-arreglo-login.md`, junto con el arreglo del botón clavado. Cuatro restricciones con su porqué: nadie se desactiva a sí mismo, no puede quedar cero administrativo activo, mínimo 12 caracteres como en el seed, y el hash no sale hacia el cliente. **Desactivar es la baja; no hay borrado**, porque una cuenta borrada se lleva puesta la atribución de lo que cargó.
+
+**Y una propuesta que dejé para que Claude Code evalúe:** cambiar la contraseña hoy no mata las sesiones viejas, y con cookies de 30 días eso pesa más, no menos — si alguien cambia la contraseña es porque sospecha algo. Se puede arreglar sin tocar el formato de la cookie, con un `credencialesDesde` en `Usuario` y derivando la emisión de `exp − DURACION_SESION`.
+
+---
+
+### 2026-09-09 · El documento de diseño del módulo 2, escrito
+
+`docs/diseno-modulo-2.md`, con la misma forma que el del módulo 1: §1 restricciones con su porqué, §2 propuesta negociable, §3 preguntas que son del diseño, y la regla de desempate.
+
+**Re-medido sobre las 117 compras del último año** (la ventana se corrió: eran 120 el 28/08). Darwash **59 de 117, 50 %**; Martin y Alonso 15; **14 sin consignatario**; Feria Rodeo Huinca 11; Ferialvarez 8; y siete nombres con una o dos. Cabezas por compra: mínimo 13, **mediana 80**, p90 328, máximo 859 — o sea que el campo de cabezas es casi siempre de dos o tres dígitos. Renglones: mediana 2, p90 6, máximo 9, y eso **no** va en esta pantalla.
+
+**Las 14 sin consignatario son el argumento de la restricción, no un dato de color:** el consignatario existe siempre, también en la compra directa, y quedaron vacías porque el campo se leía como «la feria». Por eso §1.7 prohíbe ese rótulo.
+
+**Dos restricciones nuevas que no estaban en el módulo 1**, las dos consecuencia del offline: el **estado del envío es contenido**, no un detalle de implementación —si no se distingue «lo mandé» de «está esperando señal», el comprador manda dos veces o cree que mandó algo que no salió—, y **sin señal se guarda el nombre escrito, no una selección de catálogo**.
+
+**Y se mantuvo la disciplina de alcance:** la bandeja de la oficina va en su propio documento. Son dos usuarios, dos dispositivos y dos condiciones de uso; mezclarlos en una conversación de diseño es la forma más rápida de que ninguna de las dos pantallas salga bien.
+
+§1.8 lista taxativamente los campos que hay dónde guardar, con la instrucción explícita de **preguntar en vez de inventar** si el diseño necesita algo más — que es la lección de «Cargada el 25/08/2026 · oficina» del módulo 1.
+
+---
+
+### 2026-09-09 · La vuelta del diseño del módulo 2: nada viola §1, y dos correcciones
+
+**Los seis cambios de §2 quedan y las nueve preguntas de §3 están resueltas.** Registro completo en `docs/cambios-diseno-modulo-2.md`. Iñaki eligió **una sola hoja** y **remitos en fila**, las dos variantes que Design dejó conmutables.
+
+**Lo mejor de la propuesta es cómo trató el offline: como estado normal y no como error.** «Esperando señal» es ámbar y nunca rojo, siempre con la razón al lado; y el acuse de un envío que todavía no ocurrió es **una pantalla completa** con la frase que realmente hace falta oír parado en una feria: «podés apagar el teléfono o irte». Eso es §1.2 entendida, no obedecida.
+
+**Corrección 1, de Design.** Justificó las teclas de camiones con «el p90 de renglones es 6». Los renglones no son camiones, y encima el comprador no los carga. Medido sobre las compras con al menos un DTE —**86 de 117, 74 % de cobertura**—: **1 camión en el 79 %**, mediana 1, p90 2, máximo observado 4. La decisión se mantiene, pero **la primera tecla se lleva cuatro de cada cinco reportes** y eso es lo que debería gobernar esa fila. Y el 4 es **piso, no techo**: hay compras de 859 cabezas con un solo DTE registrado, así que la captura vieja subestima.
+
+**Corrección 2, mía.** Design preguntó, sin inventar, si el reporte guarda quién lo cargó. **Sí lo guarda**: `creadoPorUsuarioId` (qué cuenta lo mandó) y `personaCompradoraId` (quién fue físicamente, que puede no tener cuenta). Mi §1.8 listó solo los campos que el comprador tipea y omitió los que salen de la sesión. La pregunta estaba bien hecha; la lista estaba incompleta.
+
+**Y una nota que va a la implementación:** los cuatro estados **no viven en el mismo lugar**. Borrador y «esperando señal» son del dispositivo; enviado y procesado son `EstadoReporte` en la base. Un reporte esperando señal no existe todavía del lado del servidor — persistir ese estado sería pedirle a la base que sepa algo que, por definición, no le llegó.
+
+---
+
+### 2026-09-09 · El prompt de implementación de la pantalla del comprador
+
+`docs/prompt-pantalla-comprador.md`. **Primero la máquina, después la pantalla**, y el envío pasa por la cola desde el día uno aunque con señal se vacíe al instante: colgarla después obliga a reescribir el camino de envío entero.
+
+**Cinco decisiones técnicas que quedaron cerradas con su porqué:**
+
+1. **IndexedDB y no `localStorage`** — las fotos son binarios y `localStorage` guarda strings con techo de ~5 MB: una sola foto lo revienta.
+2. **La clave repetida devuelve el reporte existente, no un error.** Un 409 haría que la cola reintente para siempre justo en el caso que la clave existe para resolver.
+3. **Las fotos suben por nuestro servidor, no del navegador a Storage.** Subir directo obligaría a poner una clave de Supabase en el cliente; con fotos ya comprimidas el rodeo es despreciable.
+4. **En `Adjunto.url` va la ruta del bucket, no una URL pública.** Una URL pública de un remito es un documento comercial abierto a quien tenga el link; se firma al mostrarla.
+5. **El endpoint de catálogos devuelve 18 consignatarios y las plazas, no el padrón entero.** Los 192 vendedores son el grueso y el comprador no los toca.
+
+**Y `creadoPorUsuarioId` sale de la sesión, nunca del cliente:** el cliente no decide quién es.
+
+La prueba de aceptación es una sola y es dura: **modo avión → cargar con fotos → cerrar el navegador → reabrir → volver la señal → llega una sola vez.**
+
+---
+
+### 2026-09-09 · Usuarios y login: dos correcciones que mejoran mi propuesta, y un verde que no valía nada
+
+**El login arreglado.** `<form action={...}>` con `useActionState`, así que el «entrando» sale del `pending` del hook y **ninguna rama del código puede olvidarse de apagarlo** — que era el problema de fondo, no el síntoma. El `redirect()` quedó fuera del `try` porque funciona tirando una excepción que Next tiene que ver pasar. Y un detalle que no pedí y está bien: tras un intento fallido vuelve el usuario tipeado, la contraseña no.
+
+**Por qué «solo vino el punto 6»: no era desidia, y me equivoqué al insinuarlo.** `SESION_SECRETO` está marcado **Sensitive** en Vercel, así que su valor no se puede releer — `vercel env pull` escribe `[SENSITIVE]`. El script firmaba con el secreto de Development, producción rechazaba las cookies con 307, y los puntos 1 a 4 **nunca llegaban a ejecutarse**. Yo lo leí como que faltó correrlos.
+
+**Y lo peor no era eso: los puntos 5 y 7 daban VERDE.** Verde vacío — el 5 no tocaba la red y el 7 buscaba el hash dentro de redirects sin cuerpo. **Un verde que sale de no haber mirado nada es peor que un rojo**, porque el rojo se investiga. Es la tercera vez que este proyecto se topa con la misma forma, después de la condición inalcanzable de la prueba histórica y del aviso que no podía ver lo que la consulta ya había descartado. **Ahora es regla en `CLAUDE.md`: todo chequeo tiene que fallar si su precondición no se cumplió.**
+
+La solución fue de raíz: el script **entra por el login**, mandando el formulario como lo mandaría un navegador con JavaScript apagado, y **copia los campos ocultos de la acción del HTML servido** en vez de reconstruirlos —reconstruirlos se rompe con cada versión de Next—. El script ya no depende del secreto.
+
+## Las dos correcciones a mi propuesta de `credencialesDesde`
+
+**Las dos son mejores que lo que propuse.**
+
+**1. El `iat` viaja explícito en la cookie, no derivado de `exp − DURACION_SESION`.** Mi versión da el valor exacto hoy, pero **el día que alguien mueva esa constante, toda cookie ya emitida cambia de fecha de emisión sin que nadie la toque**. Alargarla las envejece y echa a todos —molesto pero visible—; **acortarla las rejuvenece, y una cookie robada sobreviviría al cambio de contraseña que existe para matarla**. Ese lado es silencioso, que es lo que lo hace grave. Las cookies viejas sin `iat` caen al derivado, así que el deploy no echa a nadie.
+
+**2. Los dos lados se comparan en segundos enteros.** `iat` viene floorado y `credencialesDesde` tiene milisegundos: sin el floor, **la cookie emitida en el mismo segundo del cambio se ve hasta 999 ms más vieja que el corte y te echa del dispositivo donde acabás de cambiar la contraseña.**
+
+## Una guarda que no puede dispararse, y por qué no es lo mismo que una prueba que no puede fallar
+
+Encontró que la regla «no puede quedar cero administrativo activo» es hoy inalcanzable: quien llama pasó por `exigir("ADMINISTRATIVO")`, o sea que es un administrativo **activo**; si desactiva a otro él mismo queda, y si se desactiva a sí mismo corta antes la otra regla.
+
+La dejó, y corresponde. **Una prueba que no puede fallar es un adorno: su trabajo es detectar, y reporta éxito falsamente.** Una **guarda** que no puede dispararse es un cinturón: su trabajo es impedir, no cuesta nada mientras duerme, y **es el invariante de verdad** — la regla de «nadie se desactiva a sí mismo» es una comodidad que alguien puede sacar mañana sin darse cuenta de que sostenía a la otra. Quedó movida a `usuarios.ts` con el porqué escrito, y la prueba la ejercita **construyendo el estado dentro de una transacción que se revierte**, en vez de fingir que pasó.
+
+## Un hueco que el documento no preveía
+
+**Una sesión de una cuenta desactivada pasaba el proxy y veía las pantallas sin encabezado, hasta 30 días.** El proxy no puede detectarlo —corre en Edge y no toca la base, que es justamente la decisión que lo hace barato—, así que lo detecta el layout, que ya consulta `usuarioActual()`, y rebota a `/api/salir`. **Borrar la cookie primero es lo que evita el bucle:** sin eso, el proxy ve una firma válida en `/ingresar` y devuelve a `/compras`.
+
+Es el precio de la división proxy/base que elegimos, y está bien pagado: la alternativa era consultar la base en cada request, incluidos los prefetch.
+
+**Verificación de usuarios: 9 en verde, 0 en rojo.** La de auth contra producción queda pendiente del deploy, y la circularidad es real: el login desplegado todavía es el `onSubmit` viejo, que no acepta envío sin JavaScript.
