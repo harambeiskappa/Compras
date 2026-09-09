@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { normalizarTexto } from "@/lib/normalizar";
 import { verificarPassword } from "@/lib/password";
+import { pantallaInicial } from "@/lib/rutas";
 import { COOKIE_SESION, DURACION_SESION, firmarSesion } from "@/lib/sesion";
 
 /**
@@ -62,7 +63,7 @@ export async function ingresar(
 
     const u = await prisma.usuario.findUnique({
       where: { usuario },
-      select: { id: true, hashPassword: true, activo: true },
+      select: { id: true, hashPassword: true, activo: true, rol: true },
     });
 
     // Se verifica igual aunque el usuario no exista, contra un hash de descarte:
@@ -85,6 +86,16 @@ export async function ingresar(
       maxAge: DURACION_SESION,
     });
 
+    // Cada rol entra por su puerta. La regla vive en `pantallaInicial`, que
+    // también usa la raíz: escrita dos veces se contradice el día que aparezca
+    // un rol nuevo.
+    destino = pantallaInicial(u.rol);
+
+    // Un `volver` explícito gana: quien tocó un link a una pantalla y lo mandaron
+    // a entrar tiene que volver a esa pantalla, no a la de su rol. Por eso la
+    // página de login manda ESTE CAMPO VACÍO cuando no hubo `?volver` — si
+    // mandara un destino por defecto, pisaría siempre la decisión de arriba.
+    //
     // Solo rutas internas: un `volver` con URL completa sería un redirect abierto.
     const volver = String(datos.get("volver") ?? "");
     if (volver.startsWith("/") && !volver.startsWith("//")) destino = volver;

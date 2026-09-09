@@ -42,6 +42,67 @@ export async function idDeAccion(
   return null;
 }
 
+/**
+ * Llama a una server action POR HTTP, como la llamaría cualquiera con curl.
+ *
+ * Es la única forma honesta de probar los permisos: llamarla en proceso saltea
+ * el proxy, la sesión, la comprobación de rol y la serialización —justo lo que
+ * se quiere probar— y además ata el script a detalles internos que cambian
+ * solos. Eso fue lo que rompió `verificar-modulo-1.ts` sin que nadie se
+ * enterara durante once días.
+ */
+export async function postAccion(
+  base: string,
+  ruta: string,
+  accion: string,
+  args: unknown[],
+  cookie?: string
+): Promise<Response> {
+  return fetch(`${base}${ruta}`, {
+    method: "POST",
+    headers: {
+      "Next-Action": accion,
+      "Content-Type": "text/plain;charset=UTF-8",
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+    body: JSON.stringify(args),
+    redirect: "manual",
+  });
+}
+
+/**
+ * Saca el valor que devolvió una server action del cuerpo RSC.
+ *
+ * El cuerpo viene en líneas `N:<json>`; una de ellas es el valor devuelto y las
+ * otras son andamiaje del protocolo. Se prueban todas y se devuelve la primera
+ * que cumpla el predicado, en vez de asumir una posición fija: la posición
+ * cambia entre versiones de Next y el fallo sería silencioso.
+ */
+export function resultadoDeAccion<T>(
+  cuerpo: string,
+  cumple: (v: unknown) => boolean
+): T | null {
+  for (const linea of cuerpo.split("\n")) {
+    const corte = linea.indexOf(":");
+    if (corte <= 0) continue;
+    try {
+      const valor = JSON.parse(linea.slice(corte + 1)) as unknown;
+      if (cumple(valor)) return valor as T;
+    } catch {
+      /* la línea no era JSON: es andamiaje */
+    }
+  }
+  return null;
+}
+
+/** Atajo para las acciones que devuelven `{ ok: boolean, ... }`. */
+export function resultadoOk<T extends { ok: boolean }>(cuerpo: string): T | null {
+  return resultadoDeAccion<T>(
+    cuerpo,
+    (v) => typeof v === "object" && v !== null && "ok" in v
+  );
+}
+
 export type SesionHttp = {
   /** `compras_sesion=<valor>`, listo para mandar como header Cookie. */
   cookie: string;

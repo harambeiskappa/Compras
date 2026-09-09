@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
-import { cookies } from "next/headers";
+import type { Metadata, Viewport } from "next";
+import { cookies, headers } from "next/headers";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { redirect } from "next/navigation";
 
@@ -25,6 +25,20 @@ export const metadata: Metadata = {
   description: "Registro de la compra de hacienda",
 };
 
+/**
+ * Sin esto, un celular renderiza la página a 980 px y la achica: los campos
+ * quedan del tamaño de una uña. La condición de uso del módulo 2 es un teléfono
+ * en la mano, en un remate, a veces con una sola mano libre.
+ *
+ * `maximumScale` NO se limita: impedir el zoom le saca la lupa a quien la
+ * necesita para leer un número de remito al sol.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#f6f3ec",
+};
+
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // La sesión se lee acá una sola vez y baja al encabezado. `usuarioActual`
   // consulta la base: el rol, el `activo` y el corte por cambio de contraseña
@@ -41,10 +55,20 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // que mandar, y las públicas tienen que poder renderizar.
   if (!usuario && (await cookies()).has(COOKIE_SESION)) redirect("/api/salir");
 
+  // Las pantallas del comprador NO llevan el encabezado, y no es una decisión
+  // de estilo: el service worker cachea su HTML para que abran sin señal, y el
+  // encabezado pondría ahí adentro el nombre de la persona. Un HTML con datos
+  // de alguien guardado en el disco del navegador sobrevive al logout.
+  //
+  // La comprobación de sesión de arriba se hace igual: lo que se saca es el
+  // dato de la pantalla, no la guarda.
+  const ruta = (await headers()).get("x-ruta") ?? "";
+  const esComprador = ruta === "/reportar" || ruta.startsWith("/reportes");
+
   return (
     <html lang="es" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body>
-        <Encabezado usuario={usuario} />
+        <Encabezado usuario={esComprador ? null : usuario} />
         {children}
         <div style={{ height: 70 }} />
       </body>

@@ -4,7 +4,10 @@ export const dynamic = "force-dynamic";
 
 export default async function PaginaIngresar({ searchParams }: PageProps<"/ingresar">) {
   const { volver } = await searchParams;
-  const destino = typeof volver === "string" && volver.startsWith("/") ? volver : "/compras";
+  // VACÍO cuando no vino un `?volver`, y no «/compras». Un destino por defecto
+  // acá le gana a la decisión por rol de la acción, y el comercial terminaba en
+  // la lista de compras de la oficina en vez de en su pantalla de carga.
+  const destino = typeof volver === "string" && volver.startsWith("/") ? volver : "";
 
   return (
     <main style={{ maxWidth: 420, margin: "0 auto", padding: "72px 28px" }}>

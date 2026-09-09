@@ -35,9 +35,11 @@ export async function proxy(request: NextRequest) {
   const sesion = await leerSesion(request.cookies.get(COOKIE_SESION)?.value);
 
   if (publico) {
-    // Con sesión válida, el login no tiene sentido: se va a la lista.
+    // Con sesión válida, el login no tiene sentido. Va a la raíz y no a una
+    // pantalla concreta: la cookie solo lleva el id, así que acá no se sabe el
+    // rol, y es la raíz la que manda a cada uno a su puerta.
     if (pathname === "/ingresar" && sesion) {
-      return NextResponse.redirect(new URL("/compras", request.url));
+      return NextResponse.redirect(new URL("/", request.url));
     }
     return NextResponse.next();
   }
@@ -50,7 +52,22 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(destino);
   }
 
-  return NextResponse.next();
+  return conRuta(request, pathname);
+}
+
+/**
+ * Pasa la ruta al layout en un header.
+ *
+ * Un layout no tiene forma de saber qué ruta está renderizando, y el layout raíz
+ * necesita saberlo para UNA cosa: no poner el nombre de la persona en el HTML de
+ * las pantallas del comprador. Esas dos páginas las cachea el service worker
+ * para que abran sin señal, y un HTML cacheado con datos de alguien adentro
+ * sobrevive al logout. Ver `public/sw.js`.
+ */
+function conRuta(request: NextRequest, pathname: string) {
+  const cabeceras = new Headers(request.headers);
+  cabeceras.set("x-ruta", pathname);
+  return NextResponse.next({ request: { headers: cabeceras } });
 }
 
 export const config = {

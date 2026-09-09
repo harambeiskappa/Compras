@@ -137,6 +137,28 @@ button {
   box-shadow: 0 0 0 3px rgb(47 93 58 / 0.12);
 }
 
+/*
+  El punto de «esperando señal». Late DESPACIO a propósito: un parpadeo rápido
+  comunica urgencia, y esperar señal en la feria es el estado normal, no una
+  emergencia.
+*/
+@keyframes late {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+/* Quien pidió menos movimiento no ve ninguno. El color solo ya distingue. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+  }
+}
+
 @keyframes entra {
   from {
     opacity: 0;

@@ -8,19 +8,17 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ---
 
-## Dónde retomamos — actualizado 2026-09-09
+## Dónde retomamos — actualizado 2026-09-09 (auth cerrada)
 
-**La app se puede usar: el login anda en producción.** Faltaba `SESION_SECRETO` en el entorno Production de Vercel.
-
-**Dos frentes en paralelo:** a Claude Code va `docs/prompt-usuarios-y-arreglo-login.md` (arreglo del botón clavado, los 6 puntos de verificación pendientes, y la administración de usuarios, que hoy impide darle cuenta a un comercial). De mi lado, el **documento de diseño de la pantalla del comprador** (`docs/diseno-modulo-2.md`), que va a Claude Design con las dos decisiones de dominio ya cerradas: el número de remito es opcional al lado de la foto, y el comprador puede corregir su reporte mientras esté PENDIENTE.
+**Próximo paso concreto:** construir **la pantalla del comprador y la máquina del offline** — `docs/prompt-pantalla-comprador.md`, listo para pasarle a Claude Code.
 
 | | |
 |---|---|
 | **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | **Módulo 1 cerrado y andando en producción.** Módulo 2: esquema y auth completos, pantallas sin empezar. |
+| **Situación** | Módulo 1 cerrado en producción. Módulo 2: esquema, auth, cuentas y diseño listos; **falta construir la pantalla**. |
 | **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
-| **Repo** | `github.com/harambeiskappa/Compras` → `inaki-pegsa/compras` → https://compras-ten-mu.vercel.app |
-| **Base** | Supabase `compras-db`, São Paulo, plan free. Doce migraciones aplicadas, la última `202608282029181_adjunto_on_delete_restrict`. |
+| **Repo** | `github.com/harambeiskappa/Compras` → `inaki-pegsa/compras` → https://compras-ten-mu.vercel.app · `main` en `713768a` |
+| **Base** | Supabase `compras-db`, São Paulo, plan free. Una sola cuenta: `admin`. |
 | **Base de referencia** | `C:\Users\zemma\Claude\Projects\WinCompras\backend\db.sqlite3` (solo lectura) |
 
 ### Ya está hecho
@@ -30,12 +28,12 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 - **Seeds:** 8 categorías canónicas y 217 sinónimos (199 mapeados, 18 pendientes); 191 entidades con 210 roles y 11 prefijos; 12 plazas como sugerencias iniciales; **8 establecimientos**.
 - **La prueba contra el histórico**, con criterio estructural y catálogo de motivos, que no se rompe cuando el pipeline de WinCompras trae datos nuevos.
 - **El esquema del módulo 2, cerrado:** `ReporteCompra` con clave de idempotencia, `Adjunto` con dos padres posibles y CHECK de exactamente uno, `Lote.origenCategoria` y `Lote.establecimientoId`.
-- **Auth completa** (commit `7cd7b32`): cuentas con rol, `scrypt`, cookie firmada de 30 días, proxy en Edge y comprobación de rol adentro de cada server action. Falta reportar 6 de los 7 puntos de verificación.
+- **Auth y cuentas, cerradas y verificadas contra producción:** cuentas con rol, `scrypt`, cookie firmada de 30 días, proxy en Edge, comprobación de rol adentro de cada server action, `/usuarios` (alta, baja, reseteo) y `/mi-cuenta`. Auth 8/8, usuarios 14/14.
+- **El diseño del módulo 2, aprobado.** `diseno-modulo-2.md`, `cambios-diseno-modulo-2.md` y el prompt de implementación.
 
 ### Falta, en orden
 
-1. **La pantalla del comprador**, diseñada con Claude Design y con el offline como restricción de §1, no como agregado posterior.
-2. **La máquina del offline:** endpoint de catálogos, borradores locales con fotos, cola de envío con clave de idempotencia, service worker. Prueba: modo avión → cargar → cerrar el navegador → reabrir → **envía una sola vez**.
+1. **La pantalla del comprador y la máquina del offline**, juntas y en ese orden — `docs/prompt-pantalla-comprador.md`: endpoint de catálogos, borradores locales con fotos, cola de envío con clave de idempotencia, service worker. Prueba: modo avión → cargar → cerrar el navegador → reabrir → **envía una sola vez**.
 3. **Diseño con Claude Design** de las dos pantallas del módulo 2: la del comprador en la feria y la bandeja de la oficina. Destrabado por la decisión de auth.
 4. Las pantallas del módulo 2.
 5. **Arreglar el `ON DELETE` de `adjunto`** y los archivos huérfanos de Storage (borrar la fila no borra la foto).
@@ -852,3 +850,56 @@ La dejó, y corresponde. **Una prueba que no puede fallar es un adorno: su traba
 Es el precio de la división proxy/base que elegimos, y está bien pagado: la alternativa era consultar la base en cada request, incluidos los prefetch.
 
 **Verificación de usuarios: 9 en verde, 0 en rojo.** La de auth contra producción queda pendiente del deploy, y la circularidad es real: el login desplegado todavía es el `onSubmit` viejo, que no acepta envío sin JavaScript.
+
+---
+
+### 2026-09-09 · Auth y usuarios, cerrados contra producción
+
+`verificar-auth.ts --produccion`: **8 en verde, 0 en rojo**, incluidos los cuatro puntos que nunca habían llegado a ejecutarse. `verificar-usuarios.ts --produccion`: **14 en verde, 0 en rojo**. `main` limpio en `713768a`.
+
+**El detalle que vale más que los números.** Los dos rebotes por rol ahora traen **el mensaje real del servidor** —«Esta acción es para ADMINISTRATIVO, y la cuenta es COMERCIAL»— en vez de un 307 mudo. Es exactamente la regla nueva llevada un paso más allá: un 307 habría dado verde, pero verde de **«no había sesión»**, no de «el permiso funciona». **Dos rechazos por motivos distintos se ven iguales desde afuera si uno solo mira que rechazó.**
+
+**El reseteo de contraseña mueve `credencialesDesde`**, verificado de punta a punta contra producción: la sesión abierta de esa persona muere y el administrativo que resetea no se echa a sí mismo. Cambiar la cerradura sin dejar la copia de la llave.
+
+**La base de producción quedó con una sola cuenta, `admin`**, y se verificó explícitamente que ninguna cuenta de prueba sobreviviera — una que quedara viva sería un ADMINISTRATIVO con contraseña conocida. Es el chequeo que casi nadie hace y el que más caro sale no hacer.
+
+**Dos cosas quedan como decisiones de dominio, no de código:**
+
+1. **La guarda del último administrativo no puede dispararse hoy** —quien llama siempre se cuenta a sí mismo— y queda documentada **como invariante, no como control activo**. Si mañana alguien agrega cambiar el rol de una cuenta, esa guarda pasa a ser el único freno.
+2. **Una sesión de una cuenta desactivada ya no ve pantallas.** La echa el layout vía `/api/salir`, que **borra la cookie antes** de mandar al login — sin eso el proxy ve firma válida y devuelve a `/compras` en un bucle.
+
+**Con esto el módulo 2 no tiene ninguna dependencia abierta:** esquema, auth, cuentas y diseño listos. Lo único que falta es construir la pantalla.
+
+---
+
+### 2026-09-09 · La pantalla del comprador, construida y probada en un navegador de verdad
+
+**Navegador (Chromium con perfil en disco): 8 en verde. HTTP: 12 en verde. 0 en rojo.**
+
+**La prueba dura pasó entera:** modo avión → dos fotos → cerrar el navegador de verdad → reabrir → el reporte y las fotos siguen ahí → vuelve la señal → **llega una sola vez**, con los dos adjuntos, y la cola queda vacía. Una foto de **6,6 MB quedó en 202 KB**.
+
+**Y se probó donde se rompe.** IndexedDB, el canvas y el service worker no existen en Node: **probarlos con un mock habría sido comprobar que el mock funciona**, y el offline se rompe justo en las costuras con el navegador real. Es la regla del verde vacío aplicada antes de escribir el test, no después de que fallara.
+
+## Tres decisiones que el prompt no cubría
+
+**1. Las pantallas del comprador no renderizan ningún dato de la persona en el servidor** — y esto resuelve una contradicción que dejé yo en el documento. Pedí cachear el shell **y** no cachear páginas autenticadas: las dos cosas chocan si la página trae el nombre adentro, porque **un HTML cacheado sobrevive al logout**. Así que `/reportar` y `/reportes` son cáscaras que se llenan en el cliente. La consecuencia hay que decirla en voz alta para que nadie la «arregle» después: **el shell se puede cargar sin sesión, y está bien** — no tiene datos, y traerlos exige la cookie.
+
+Lo mejor es el agregado: **un chequeo (7b) que se pone en rojo si alguna de esas páginas vuelve a traer datos.** El comentario del service worker depende de esa condición, y **un comentario no se hace cumplir solo**.
+
+**2. «6+» no guarda 6: abre un campo para el número exacto.** Guardar 6 cuando fueron nueve es inventar el dato. Es regla 1, así que no volvió a Design: una restricción de dominio no admite empate.
+
+**3. La ruta de cada foto en Storage es determinística** (clave del reporte + índice, con `upsert`). Las fotos suben antes de crear las filas, así que un intento que falla a mitad y se reintenta las vuelve a subir: **con ruta aleatoria, cada reintento dejaba copias huérfanas comiéndose el GB del plan free.** Es la idempotencia extendida más allá de la fila: **si el reintento es parte del diseño, todo lo que el reintento toca tiene que ser idempotente, también los archivos.**
+
+## Un diagnóstico equivocado que el navegador desmintió
+
+El comercial entraba a `/compras` en vez de a su pantalla. El primer diagnóstico —cómo Next resuelve `redirect("/")`— era falso: la causa real era que **la página de login mandaba `volver="/compras"` por defecto** y eso pisaba la decisión por rol. El comentario quedó diciendo la razón verdadera, no la primera.
+
+Ese `?? "/compras"` está en `ingresar/page.tsx` desde el día uno y **yo leí esa línea el 28/08 sin verla**: entonces no había decisión por rol, así que no era un bug todavía. **Un valor por defecto razonable envejece mal cuando alguien agrega una decisión más arriba.**
+
+Es el segundo diagnóstico confiado y equivocado de la jornada —el primero fue mío, con la cookie— y las dos veces lo desmintió ir a mirar. **La diferencia entre las dos: esta se desmintió sola porque había una prueba corriendo.**
+
+## Una verificación podrida, y la regla que deja
+
+**`scripts/verificar-modulo-1.ts` está roto desde el commit de auth**, hace once días, y nadie lo notó. Llama a las server actions en proceso y `exigir()` necesita `cookies()`, que fuera de una request no existe. O sea que **los «19 chequeos en verde» del módulo 1 no se pueden reproducir hoy**: dejaron de ser un hecho verificable y pasaron a ser una anécdota.
+
+Tres reglas nuevas en `CLAUDE.md`: las verificaciones se corren **todas juntas con un solo comando**, para que un script roto sea tan visible como un chequeo en rojo; **entran por el login y llaman por HTTP**, nunca a las server actions en proceso, porque llamar la función directo saltea justo las capas que se quieren probar; y **lo que hay que preparar en Supabase se prepara desde un script del repo, no con un clic en el panel** — vale para las tablas y ahora también para Storage, con `preparar-storage.ts` y el bucket `remitos` privado, tope de 5 MB, solo imágenes.

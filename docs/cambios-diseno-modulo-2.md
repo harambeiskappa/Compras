@@ -70,3 +70,11 @@ La §1.8 de mi documento listaba solo los campos que el comprador tipea y omiti�
 - **Enviado** (`PENDIENTE`) y **procesado** (`PROCESADO`) son `EstadoReporte`, en la base.
 
 Un reporte esperando señal **no existe todavía del lado del servidor**. Intentar persistir ese estado sería pedirle a la base que sepa algo que, por definición, no le llegó.
+
+---
+
+## Un cambio posterior, forzado por el dominio
+
+**«6+» no guarda 6: abre un campo para tipear el número exacto.**
+
+El prototipo dejaba «6+» como una tecla más, y al implementarlo quedó a la vista que guardar `6` cuando fueron nueve **es inventar el dato** — regla 1, la que da origen a todo el proyecto. No vuelve a Claude Design porque no es una decisión de diseño: una restricción de dominio no admite empate.
