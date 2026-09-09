@@ -8,17 +8,17 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ---
 
-## Dónde retomamos — actualizado 2026-08-28
+## Dónde retomamos — actualizado 2026-08-28 (auth implementada)
 
-**Próximo paso concreto:** **auth**. Tabla `Usuario`, login, sesión y permisos por rol. Es lo último que traba las pantallas del módulo 2: el esquema ya está, el diseño está esperando saber quién entra y qué ve.
+**Próximo paso concreto:** el **documento de diseño de la pantalla del comprador** (`docs/diseno-modulo-2.md`), que va a Claude Design. Antes, dos cosas de cinco minutos: confirmar que `SESION_SECRETO` está en Vercel **entrando de verdad a la app** (la pantalla de ingreso carga aunque falte), y correr el seed con `ADMIN_INICIAL_PASSWORD` para tener la primera cuenta.
 
 | | |
 |---|---|
 | **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | **Módulo 1 cerrado y andando en producción.** Módulo 2: esquema completo, pantallas sin empezar. |
+| **Situación** | **Módulo 1 cerrado y andando en producción.** Módulo 2: esquema y auth completos, pantallas sin empezar. |
 | **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
 | **Repo** | `github.com/harambeiskappa/Compras` → `inaki-pegsa/compras` → https://compras-ten-mu.vercel.app |
-| **Base** | Supabase `compras-db`, São Paulo, plan free. Diez migraciones aplicadas, la última `20260828201311_establecimiento`. |
+| **Base** | Supabase `compras-db`, São Paulo, plan free. Doce migraciones aplicadas, la última `202608282029181_adjunto_on_delete_restrict`. |
 | **Base de referencia** | `C:\Users\zemma\Claude\Projects\WinCompras\backend\db.sqlite3` (solo lectura) |
 
 ### Ya está hecho
@@ -28,10 +28,11 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 - **Seeds:** 8 categorías canónicas y 217 sinónimos (199 mapeados, 18 pendientes); 191 entidades con 210 roles y 11 prefijos; 12 plazas como sugerencias iniciales; **8 establecimientos**.
 - **La prueba contra el histórico**, con criterio estructural y catálogo de motivos, que no se rompe cuando el pipeline de WinCompras trae datos nuevos.
 - **El esquema del módulo 2, cerrado:** `ReporteCompra` con clave de idempotencia, `Adjunto` con dos padres posibles y CHECK de exactamente uno, `Lote.origenCategoria` y `Lote.establecimientoId`.
+- **Auth completa** (commit `7cd7b32`): cuentas con rol, `scrypt`, cookie firmada de 30 días, proxy en Edge y comprobación de rol adentro de cada server action. Falta reportar 6 de los 7 puntos de verificación.
 
 ### Falta, en orden
 
-1. **Auth:** tabla `Usuario`, login, sesión larga, permisos por rol verificados en el servidor.
+1. **La pantalla del comprador**, diseñada con Claude Design y con el offline como restricción de §1, no como agregado posterior.
 2. **La máquina del offline:** endpoint de catálogos, borradores locales con fotos, cola de envío con clave de idempotencia, service worker. Prueba: modo avión → cargar → cerrar el navegador → reabrir → **envía una sola vez**.
 3. **Diseño con Claude Design** de las dos pantallas del módulo 2: la del comprador en la feria y la bandeja de la oficina. Destrabado por la decisión de auth.
 4. Las pantallas del módulo 2.
@@ -707,3 +708,25 @@ O sea que el módulo 2 no es un formulario común. Cuatro consecuencias:
 **Un número mío que no cerraba, y la corrección es la regla 11 aplicada a mí.** Dije que El Haras concentra el **57,6 %** del stock. Medido sobre cabezas compradas con destino cargado en `detalleliquidacion`, da **45,9 % (735 de 1600)**. No es que uno esté mal: **son dos poblaciones distintas** — el 57,6 % sale del stock en el feedlot, que no es lo mismo que las cabezas compradas con destino registrado. El error fue mío y fue soltar un porcentaje sin su denominador, que es exactamente lo que la regla 11 prohíbe. **Cuando la pantalla muestre ese número, tiene que decir cuál de los dos está mostrando, con su cobertura al lado.** La conclusión no cambia por ninguno de los dos caminos: El Haras concentra la mayoría y un orden alfabético lo entierra.
 
 **Un dato para cuando se arme el selector:** de los ocho, solo **cinco tienen uso registrado** —El Haras, El Coloradito, Pancho Primero, El Descanso, San Antonio—. La Cucuca, La Panchita y El Durazno existen en el catálogo pero nunca aparecieron en un renglón. Un orden por uso los va a dejar al final, que probablemente sea lo correcto, pero **conviene saberlo antes de que alguien piense que se perdieron**.
+
+---
+
+### 2026-08-28 · Auth implementada: commit `7cd7b32`
+
+**Lo que quedó.** `Usuario` con `RolUsuario`, contraseñas con `scrypt` de `node:crypto` (`src/lib/password.ts`), cookie firmada de 30 días (`src/lib/sesion.ts`), protección de rutas en `src/proxy.ts`, la decisión de permisos en `src/lib/auth.ts`, atribución `creadoPorUsuarioId` en `Compra` y `ReporteCompra`, y `scripts/verificar-auth.ts`. Doce migraciones.
+
+**«La cookie es identidad; la base es autoridad» quedó implementado, no solo escrito.** Adentro de la cookie va el id y nada más: el rol y el `activo` se leen de la base en cada llamada. Es lo que hace que cambiar un rol o desactivar una cuenta valga **hoy** y no dentro de treinta días.
+
+**Tres decisiones que no pedí y están bien.**
+
+1. **El proxy se queda en Edge, con el porqué escrito:** corre en cada request, incluidas las que Next prefetchea, así que una consulta a la base ahí se paga muchas veces. Verifica firma y vencimiento, nada más. La misma función de firma sirve en los dos runtimes porque está escrita con Web Crypto — **una segunda implementación para Edge habría sido una segunda oportunidad de que las dos no coincidan.**
+2. **El `?volver=` guarda solo la ruta, nunca una URL completa.** Un `?volver=https://otrositio` sería un redirect abierto. No estaba en el pedido.
+3. **`exigir()` tira en vez de devolver null.** Olvidarse de comprobar el resultado corta el paso en vez de habilitarlo: **el camino descuidado falla cerrado.**
+
+**Y una asimetría deliberada en los `ON DELETE`, que es la correcta.** `adjunto` quedó `RESTRICT` en sus dos padres —borrar la fila no borra el archivo de Storage, así que un `CASCADE` perdía evidencia y dejaba huérfanos silenciosos—, pero `creadoPorUsuarioId` quedó `SET NULL`: si algún día se borra una cuenta, **la compra no se borra con ella**. Perder la atribución es aceptable; perder la compra, no. No son la misma regla porque no son la misma pérdida.
+
+**Verificado por mí contra producción:** `/compras` redirige a `/ingresar`, y `/ingresar` responde el formulario. Eso confirma de paso el punto 6 de la lista: **la Deployment Protection está apagada**, así que el link del comercial no muere en un login de Vercel.
+
+**Lo que queda por confirmar, y una trampa que encontré mirándolo.** Los otros seis puntos de la verificación exigida no vinieron reportados. Y hay uno que desde afuera **no se puede ver**: `leerSesion` devuelve null antes de tocar el secreto cuando no hay cookie, así que la pantalla de ingreso se dibuja perfecta **aunque `SESION_SECRETO` no exista en Vercel** — el error recién aparece cuando alguien aprieta «Entrar». Una pantalla de login que carga bien no prueba que el login funcione. Hay que probar entrar de verdad.
+
+**Una verruga cosmética.** La carpeta `202608282029181_adjunto_on_delete_restrict` tiene quince dígitos donde van catorce. Ordena bien igual —`…202917` < `…2029181` carácter por carácter— y renombrar una migración ya aplicada rompería la fila de `_prisma_migrations`, así que **se deja como está**. Anotado para que dentro de seis meses nadie crea que descubrió un bug.
