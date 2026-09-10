@@ -469,10 +469,17 @@ model Carga {
   @@map("carga")
 }
 
+/// Cómo se pactó el precio del renglón.
+///
+/// SOLO DOS, y `BULTO` NO está por decisión: es otra forma de decir «por
+/// cabeza». En los dos casos pasan un precio por animal y el importe sale de
+/// cabezas × precio; no hay ninguna operación que se pacte por el lote entero
+/// (confirmado el 10/09/2026). Dos valores que significan lo mismo divergen
+/// solos y parten en dos una sola realidad — es la regla «un concepto, un
+/// lugar» aplicada a un enum.
 enum ModalidadPrecio {
   KG
   CABEZA
-  BULTO
 }
 
 enum ModalidadComision {

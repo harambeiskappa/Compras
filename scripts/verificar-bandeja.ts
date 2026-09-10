@@ -54,7 +54,8 @@ type Res = { ok: true; id?: number } | { ok: false; errores: string[] };
 async function main() {
   const { prisma } = await import("@/lib/prisma");
   const { hashearPassword } = await import("@/lib/password");
-  const { totalesDeCompra, kilosPorCabeza } = await import("@/lib/totales");
+  const { totalesDeCompra, kilosPorCabeza, importeDelRenglon, comisionDelRenglon } =
+    await import("@/lib/totales");
 
   console.log(`\nContra: ${BASE}\n`);
 
@@ -362,6 +363,92 @@ async function main() {
       "y NO existe ninguna columna de comisión ni de establecimiento en `compra`",
       !nombres.some((n) => n.includes("comision") || n.includes("establecimiento")),
       `columnas de compra: ${nombres.join(", ")}`
+    );
+
+    // ------------------------------------------------------------- BULTO
+    console.log("\n=== BULTO salió del enum: dos modalidades y nada más ===");
+    // `BULTO` y `CABEZA` eran lo mismo -un precio por animal- y dos valores que
+    // significan lo mismo divergen solos. Se comprueba en LA BASE y no en la
+    // pantalla: esconder la opcion del selector no impide un INSERT.
+    const etiquetas = await prisma.$queryRawUnsafe<{ enumlabel: string }[]>(
+      `SELECT enumlabel FROM pg_enum e
+         JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'ModalidadPrecio' ORDER BY e.enumsortorder`
+    );
+    const conBulto = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+      `SELECT count(*) AS n FROM lote WHERE "modalidadPrecio"::text = 'BULTO'`
+    );
+
+    let laBaseLoRechaza = false;
+    let comoFallo = "";
+    try {
+      await prisma.$executeRawUnsafe(
+        `UPDATE lote SET "modalidadPrecio" = 'BULTO' WHERE id = $1`,
+        conVaca?.id ?? -1
+      );
+    } catch (e) {
+      laBaseLoRechaza = true;
+      comoFallo =
+        (e instanceof Error ? e.message : String(e))
+          .split("\n")
+          .find((l) => /invalid input value|does not exist|no existe/i.test(l))
+          ?.trim()
+          ?.slice(0, 90) ?? "lo rechazo";
+    }
+
+    chequear(
+      "el tipo ya no admite BULTO, y la BASE lo rechaza",
+      etiquetas.map((x) => x.enumlabel).join(",") === "KG,CABEZA" &&
+        Number(conBulto[0].n) === 0 &&
+        laBaseLoRechaza,
+      `enum: ${etiquetas.map((x) => x.enumlabel).join(", ")} | filas con BULTO: ` +
+        `${conBulto[0].n} | el UPDATE directo ${laBaseLoRechaza ? `fallo: ${comoFallo}` : "PASO"}`
+    );
+
+    // El caso concreto del prompt: 63 cabezas a 1.350.000 = 85.050.000.
+    const porCabeza = resultadoOk<Res>(
+      await (
+        await nuevoLote({
+          categoriaTexto: "novillo",
+          cabezas: 63,
+          kilosPorCabeza: null,
+          precio: 1350000,
+          modalidadPrecio: "CABEZA",
+          comision: 2,
+          comisionModalidad: "PORCENTAJE",
+          establecimientoId: null,
+          tropaId: null,
+        })
+      ).text()
+    );
+    const guardadoPorCabeza = await prisma.lote.findFirst({
+      where: { compraId, cabezas: 63 },
+      select: {
+        cabezas: true,
+        precio: true,
+        modalidadPrecio: true,
+        comision: true,
+        comisionModalidad: true,
+      },
+    });
+    const paraImporte = guardadoPorCabeza
+      ? {
+          cabezas: guardadoPorCabeza.cabezas,
+          kilosOrigen: null,
+          precio: Number(guardadoPorCabeza.precio),
+          modalidadPrecio: guardadoPorCabeza.modalidadPrecio,
+          comision: Number(guardadoPorCabeza.comision),
+          comisionModalidad: guardadoPorCabeza.comisionModalidad,
+        }
+      : null;
+    const importe = paraImporte ? importeDelRenglon(paraImporte) : null;
+    const comisionCalculada = paraImporte ? comisionDelRenglon(paraImporte) : null;
+
+    chequear(
+      "63 cabezas a 1.350.000 dan 85.050.000, y la comision sale de ese importe",
+      porCabeza?.ok === true && importe === 85050000 && comisionCalculada === 1701000,
+      `importe ${importe?.toLocaleString("es-AR")} | comision al 2 % ` +
+        `${comisionCalculada?.toLocaleString("es-AR")}`
     );
 
     // ---------------------------------------------------------------- 9

@@ -980,3 +980,47 @@ Es grave por lo que es, no por lo que rompe: **un reporte atrapado es evidencia 
 **Y la pregunta de la atribución tiene respuesta, no es un agujero.** «Lo mandó Ramiro» sale de la cuenta y miente si dos la comparten — pero son dos campos distintos y los dos existen: `creadoPorUsuarioId` dice qué cuenta, y eso siempre es cierto; `personaCompradoraId` dice quién fue físicamente. **La pantalla tiene que rotular la cuenta como cuenta**, no afirmar la persona.
 
 **Una anotación de higiene:** tres citas de §1 vinieron cambiadas de número. Las decisiones son correctas, las citas no, y quedó dicho en el prompt que se siga la regla y no el número. Ya nos pasó con las teclas de camiones que una decisión buena viniera con la razón equivocada, y la razón es lo que sobrevive a la decisión.
+
+---
+
+### 2026-09-10 · La bandeja, y un agujero que habría vaciado de sentido al módulo
+
+**84 en verde, 0 en rojo**, con la bandeja sumada a `npm run verificar` — siete verificaciones. El RLS de la migración **comprobado contra `pg_class`, no supuesto**.
+
+## El hallazgo grande: la oficina podía pisar la evidencia
+
+`corregirReporte` usaba `puedeVer`, que le da acceso a un ADMINISTRATIVO. **Correcto para leer** —la oficina necesita ver el reporte en la bandeja— **y equivocado para escribir**: con eso, por POST directo, la oficina podía reescribir lo que el comprador había mandado. **La diferencia entre lo que dice el remito y lo que vio el comprador se podía hacer desaparecer sin dejar rastro** — y esa diferencia es la razón por la que el reporte existe. Un módulo entero apoyado en «el reporte es evidencia y no se pisa», con la puerta abierta.
+
+**Leer y escribir el mismo dato son dos permisos distintos aunque el sujeto sea el mismo.** Reusar un predicado de lectura para autorizar una escritura es una familia de bug, no un descuido, y quedó como regla en `CLAUDE.md`.
+
+Lo arregló por dos vías, que es lo correcto: **intentándolo de verdad con cookie de oficina**, y un **chequeo estructural** de que ninguna acción de oficina escriba campos del reporte. El primero prueba el caso; el segundo previene el próximo.
+
+## Un rojo que estaba midiendo otra cosa
+
+El chequeo de ida y vuelta de los kilos falló: `16493,2 / 40` da `412.33000000000004`. **La app estaba bien** —usa la función que redondea—; el chequeo hacía la división cruda, o sea que **estaba midiendo IEEE 754 y no la app**. Es la quinta vez que aparece la misma familia, y esta vez del lado opuesto: no un verde vacío, un **rojo ajeno**. La regla en `CLAUDE.md` se amplió: un chequeo tiene que fallar si su precondición no se cumplió **y tiene que medir la app, no otra cosa**.
+
+## La suposición del `BULTO` estaba al revés, y hubo que preguntar
+
+Supuso que en `BULTO` el precio es el del renglón entero. **Es por animal**, confirmado por Iñaki. El histórico lo respalda: de los 32 renglones sin precio por kilo, varios dan un `importe/cabezas` **exactamente redondo** — 480.000 con 1 cabeza, 670.000 con 2, 722.000 con 25, 1.090.000 con 12, 1.240.000 con 58, 1.290.000 con 17. Un precio por lote entero no produce eso.
+
+**No se podía medir del todo, porque el esquema viejo no guarda la modalidad.** Y esa es la lección: **que un dato no se pueda medir es una razón para preguntar, no para suponer.** La suposición estaba anotada —eso estuvo bien— pero anotada y equivocada: una nota que explica un razonamiento falso es peor que ninguna, porque la próxima persona la lee y la cree.
+
+Las dos modalidades se conservan separadas igual: registran **cómo se pactó**, que es un hecho comercial distinto aunque la aritmética coincida. Regla 14 en `CLAUDE.md`; corrección en `docs/prompt-bulto.md`.
+
+## Y el aviso del módulo 1, por fin disparando
+
+El aviso de empresa titular quedó pendiente desde el módulo 1 porque **no había tropas contra las cuales comparar**. Ahora las hay y aparece: señala, no bloquea, y el chequeo 10 confirma que la tropa se guarda igual. Es la primera vez en el proyecto que una decisión tomada por adelantado se activa sola al llegar la pieza que le faltaba.
+
+---
+
+### 2026-09-10 · `BULTO` no existía, y la culpa fue de mi pregunta
+
+**Corrección de lo que registré hace un rato.** Escribí que «por bulto» el precio es por animal y que las dos modalidades se conservaban separadas porque registran cómo se pactó. **La respuesta completa es más simple: `BULTO` y `CABEZA` son lo mismo.** En los dos casos pasan un precio por animal y el importe sale de cabezas × precio. **No hay ninguna operación que se pacte por el lote entero.**
+
+**El error fue mío y fue de método.** La primera pregunta ofrecía «por el lote entero», «por animal» y «las dos cosas pasan» — **las tres daban por sentado que `BULTO` era algo distinto de `CABEZA`**. Una pregunta que no incluye la respuesta correcta entre sus opciones no la puede recibir, y encima devuelve una respuesta que parece una confirmación. **Es la misma familia que la prueba que no puede fallar, aplicada a preguntarle a una persona.** Hizo falta que Iñaki insistiera —«no sé si me entendiste»— para que la reformulara con los dos casos en números.
+
+**La consecuencia: `BULTO` sale del enum `ModalidadPrecio`, que queda con `KG` y `CABEZA`.** No es cosmético. Dos valores que significan lo mismo son la misma enfermedad que un total guardado: el mismo hecho en dos lugares. **Divergen solos** —una persona carga el trato como `BULTO`, otra el mismo trato como `CABEZA`— y a los seis meses cualquier corte por modalidad parte en dos una sola realidad.
+
+**Y el histórico nunca lo justificó.** El «90,8 % por kilo, el resto por bulto o por cabeza» que anduvo dando vueltas desde la primera medición era una inferencia mía: **el esquema viejo no guarda la modalidad**. La distinción entró por la puerta del vocabulario, no del dato, y sobrevivió cuatro documentos sin que nadie la mirara de frente.
+
+Regla 14 de `CLAUDE.md` reescrita. `docs/prompt-bulto.md` reemplazado — el anterior decía lo contrario y quedaba peligroso: **una instrucción equivocada es peor que ninguna, igual que una nota que explica un razonamiento falso.**

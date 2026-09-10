@@ -737,7 +737,6 @@ function Editor({
               <option value="">—</option>
               <option value="KG">por kg</option>
               <option value="CABEZA">por cab.</option>
-              <option value="BULTO">bulto</option>
             </select>
           </div>
         </div>

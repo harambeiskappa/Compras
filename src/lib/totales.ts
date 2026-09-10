@@ -92,7 +92,7 @@ export function kilosPorCabeza(total: number, cabezas: number): number | null {
   return redondear(total / cabezas);
 }
 
-export type ModalidadPrecio = "KG" | "CABEZA" | "BULTO";
+export type ModalidadPrecio = "KG" | "CABEZA";
 export type ModalidadComision = "PORCENTAJE" | "MONTO";
 
 export type RenglonParaCalculo = {
@@ -107,17 +107,15 @@ export type RenglonParaCalculo = {
 /**
  * Cuánta plata es este renglón. `null` cuando falta algo — no 0.
  *
- * BULTO: el precio es el del renglón entero, no por unidad. Es la lectura
- * natural de «por bulto» y el 91 % de los renglones son por kilo, así que el
- * caso es marginal; si resultara al revés, se cambia acá y en ningún otro lado.
+ * Dos modalidades y nada más: por kilo, el precio multiplica los kilos; por
+ * cabeza, las cabezas.
  */
 export function importeDelRenglon(r: RenglonParaCalculo): number | null {
   if (r.precio === null || r.modalidadPrecio === null) return null;
   if (r.modalidadPrecio === "KG") {
     return r.kilosOrigen === null ? null : redondear(r.precio * r.kilosOrigen);
   }
-  if (r.modalidadPrecio === "CABEZA") return redondear(r.precio * r.cabezas);
-  return redondear(r.precio);
+  return redondear(r.precio * r.cabezas);
 }
 
 /**
