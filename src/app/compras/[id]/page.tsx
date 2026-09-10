@@ -60,7 +60,7 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
         select: {
           id: true,
           cabezas: true,
-          kilosOrigen: true,
+          kilosLiquidados: true,
           precio: true,
           modalidadPrecio: true,
           comision: true,
@@ -143,7 +143,7 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
     cabezas: l.cabezas,
     // Decimal → number para poder mandarlo al cliente. Los montos de esta app
     // están muy lejos del límite de precisión de un double.
-    kilosOrigen: l.kilosOrigen === null ? null : Number(l.kilosOrigen),
+    kilosLiquidados: l.kilosLiquidados === null ? null : Number(l.kilosLiquidados),
     precio: l.precio === null ? null : Number(l.precio),
     modalidadPrecio: l.modalidadPrecio,
     comision: l.comision === null ? null : Number(l.comision),

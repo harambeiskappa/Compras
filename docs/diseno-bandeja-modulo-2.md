@@ -141,7 +141,7 @@ Punto de partida. Cambiar lo que haga falta y decir qué se cambió.
 
 1. **¿Cómo se ve el reporte al lado mientras se arma la compra?** Sus fotos hay que poder agrandarlas: el número de remito se lee de ahí.
 2. **¿Cómo se cargan dos renglones sin que se sienta una planilla, y nueve sin que se sienta imposible?** La mediana es 2 y el p90 es 6.
-3. **¿Se piden los kilos por cabeza o el total?** El dato de arriba dice que la casa escribe **por cabeza** (91 %) y el total nunca (0 %). El esquema guarda el total. ¿Se pide por cabeza y se muestra el total calculado, al revés, o los dos con uno derivándose del otro?
+3. **¿Se piden los kilos por cabeza o el total?** ~~El dato de arriba dice que la casa escribe por cabeza (91 %)~~ — **CORREGIDO el 10/09/2026: ese 91 % era de una columna derivada del peso liquidado, no evidencia sobre lo que la oficina escribe.** El papel dice **los kilos del lote**, y aclara el promedio por cabeza al lado. Se pide **el total** y se muestra el promedio derivado.
 4. **¿Cómo se ofrece «la misma comisión para todos» y «todo al mismo establecimiento» de modo que se vea que rellenó renglones y no que guardó una cabecera?** (§1.6)
 5. **¿Cómo se escribe una categoría** cuando el 21 % de las veces la persona va a tipear «vaca» y otras veces «VQ»? ¿Y cómo se ve una que **no matcheó** y quedó pendiente, sin frenar la carga?
 6. **¿Cómo se ve el aviso de empresa titular** para que se lea y no se ignore por costumbre? (§1.9)

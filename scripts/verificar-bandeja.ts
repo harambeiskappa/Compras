@@ -12,6 +12,7 @@
  * Correr:  npx tsx scripts/verificar-bandeja.ts
  *          npx tsx scripts/verificar-bandeja.ts --produccion
  */
+import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
@@ -227,7 +228,7 @@ async function main() {
     const base = {
       categoriaTexto: "vaca",
       cabezas: 40,
-      kilosPorCabeza: 412.33,
+      kilosLiquidados: 16493.2,
       precio: 1200,
       modalidadPrecio: "KG",
       comision: null,
@@ -240,13 +241,13 @@ async function main() {
     // `nov/vaq` es una ambigüedad real del histórico, no un tipeo.
     const l2 = resultadoOk<Res>(
       await (
-        await nuevoLote({ ...base, categoriaTexto: "nov/vaq", cabezas: 30, kilosPorCabeza: 250 })
+        await nuevoLote({ ...base, categoriaTexto: "nov/vaq", cabezas: 30, kilosLiquidados: 7500 })
       ).text()
     );
     // Este NO tiene kilos: es el que prueba el punto 1.
     const l3 = resultadoOk<Res>(
       await (
-        await nuevoLote({ ...base, categoriaTexto: "vaca", cabezas: 20, kilosPorCabeza: null })
+        await nuevoLote({ ...base, categoriaTexto: "vaca", cabezas: 20, kilosLiquidados: null })
       ).text()
     );
     sinonimosCreados.push("nov/vaq");
@@ -257,7 +258,7 @@ async function main() {
       select: {
         id: true,
         cabezas: true,
-        kilosOrigen: true,
+        kilosLiquidados: true,
         precio: true,
         modalidadPrecio: true,
         comision: true,
@@ -286,26 +287,100 @@ async function main() {
     );
 
     // ---------------------------------------------------------------- kilos
-    console.log("\n=== kilos por cabeza: ida y vuelta exacta ===");
-    // La multiplicación se hace en centésimos enteros, así que el TOTAL guardado
-    // es exacto. La división de vuelta NO lo es —16493.2 / 40 da
-    // 412.33000000000004 en punto flotante— y por eso el camino de vuelta pasa
-    // por `kilosPorCabeza`, que redondea. Se prueba la función que usa la
-    // pantalla, no una división cruda que la pantalla no hace: si se probara la
-    // división, el chequeo estaría midiendo IEEE 754 y no la app.
-    const vuelta = conVaca ? kilosPorCabeza(Number(conVaca.kilosOrigen), conVaca.cabezas) : null;
+    console.log("\n=== Se pide el TOTAL del lote y se muestra el promedio ===");
+    // El papel dice los kilos DEL LOTE y el promedio por cabeza ya viene
+    // calculado ahí. Por eso se guarda tal cual lo que la persona escribe —sin
+    // conversión de ida— y el promedio se deriva al mostrarlo.
+    //
+    // El promedio pasa por `kilosPorCabeza`, que redondea: `16493.2 / 40` da
+    // 412.33000000000004 en punto flotante. Se prueba la función que usa la
+    // pantalla, no la división cruda, que sería medir IEEE 754 y no la app.
+    const vuelta = conVaca ? kilosPorCabeza(Number(conVaca.kilosLiquidados), conVaca.cabezas) : null;
     chequear(
-      "412,33 × 40 se guarda exacto y vuelve a mostrarse como 412,33",
-      conVaca !== undefined && Number(conVaca.kilosOrigen) === 16493.2 && vuelta === 412.33,
-      `guardado ${conVaca?.kilosOrigen} kg · por cabeza ${vuelta} ` +
-        `(la división cruda daría ${conVaca ? Number(conVaca.kilosOrigen) / conVaca.cabezas : "?"})`
+      "40 cabezas y 16.493,2 kg de total → promedio 412,33 kg por cabeza",
+      conVaca !== undefined && Number(conVaca.kilosLiquidados) === 16493.2 && vuelta === 412.33,
+      `guardado tal cual: ${conVaca?.kilosLiquidados} kg · promedio derivado ${vuelta} ` +
+        `(la división cruda daría ${conVaca ? Number(conVaca.kilosLiquidados) / conVaca.cabezas : "?"})`
+    );
+
+    // Sin kilos, el promedio NO se calcula ni sale como 0.
+    const sinKilos = lotes.find((l) => l.kilosLiquidados === null);
+    chequear(
+      "sin kilos, el promedio es s/d y no cero",
+      sinKilos !== undefined &&
+        (sinKilos.kilosLiquidados === null
+          ? null
+          : kilosPorCabeza(Number(sinKilos.kilosLiquidados), sinKilos.cabezas)) === null,
+      sinKilos ? `el renglón de ${sinKilos.cabezas} cabezas no tiene kilos y no inventa un promedio` : "no hay renglón sin kilos"
+    );
+
+    // -------------------------------------------------------- el renombre
+    console.log("\n=== El rename es rename, no alias ===");
+    // La columna se llama como el papel: `kilosLiquidados`. Se comprueba que no
+    // quede NINGÚN USO del nombre viejo — no alcanza con que el código nuevo
+    // ande, porque un alias olvidado en una pantalla se descubre recién cuando
+    // alguien mira ese renglón.
+    //
+    // Se distingue USO de MENCIÓN: los comentarios que explican POR QUÉ se
+    // renombró son justamente lo que no hay que borrar, y las dos migraciones
+    // —la que creó la columna y la que la renombró— son el historial.
+    const archivos = execSync(
+      'git ls-files "*.ts" "*.tsx" "*.prisma" "*.sql"',
+      { encoding: "utf8" }
+    )
+      .split("\n")
+      .map((f) => f.trim())
+      .filter((f) => f && !f.startsWith("src/generated/") && !f.startsWith("prisma/migrations/"));
+
+    // El nombre viejo se ARMA EN RUNTIME y no se escribe entero en ninguna
+    // parte de este archivo. Si estuviera literal, el chequeo se encontraría a
+    // sí mismo y habría que excluirse — y un chequeo que se excluye del alcance
+    // que dice cubrir es justamente el tipo de verde flojo que este proyecto
+    // viene sacando. Así el barrido incluye a este script como a cualquier otro.
+    const NOMBRE_VIEJO = "kilos" + "Origen";
+    const patronViejo = new RegExp(`\\b${NOMBRE_VIEJO}\\b`);
+
+    const usosViejos: string[] = [];
+    for (const archivo of archivos) {
+      const lineas = readFileSync(archivo, "utf8").split("\n");
+      lineas.forEach((linea, i) => {
+        if (!patronViejo.test(linea)) return;
+        const esComentario = /^\s*(\/\/|\*|\/\*|--|\/\/\/)/.test(linea);
+        if (!esComentario) usosViejos.push(`${archivo}:${i + 1}`);
+      });
+    }
+
+    chequear(
+      `no queda ningún uso de \`${NOMBRE_VIEJO}\` en el código`,
+      usosViejos.length === 0,
+      usosViejos.length
+        ? `QUEDAN: ${usosViejos.join(", ")}`
+        : `${archivos.length} archivos revisados (las migraciones conservan el nombre viejo: son el historial)`
+    );
+
+    const columna = await prisma.$queryRawUnsafe<
+      { column_name: string; is_nullable: string; column_default: string | null }[]
+    >(
+      `SELECT column_name, is_nullable, column_default
+         FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'lote'
+          AND column_name IN ('kilosLiquidados', '${NOMBRE_VIEJO}')`
+    );
+    chequear(
+      "en la base la columna se llama `kilosLiquidados`, nullable y sin default",
+      columna.length === 1 &&
+        columna[0].column_name === "kilosLiquidados" &&
+        columna[0].is_nullable === "YES" &&
+        columna[0].column_default === null,
+      columna.map((c) => `${c.column_name} nullable=${c.is_nullable} default=${c.column_default}`).join(" · ") ||
+        "no apareció ninguna de las dos"
     );
 
     // ---------------------------------------------------------------- 1
     console.log("\n=== 1. Un renglón sin kilos no cuenta como 0 ===");
     const paraCalculo = lotes.map((l) => ({
       cabezas: l.cabezas,
-      kilosOrigen: l.kilosOrigen === null ? null : Number(l.kilosOrigen),
+      kilosLiquidados: l.kilosLiquidados === null ? null : Number(l.kilosLiquidados),
       precio: l.precio === null ? null : Number(l.precio),
       modalidadPrecio: l.modalidadPrecio,
       comision: l.comision === null ? null : Number(l.comision),
@@ -406,12 +481,20 @@ async function main() {
     );
 
     // El caso concreto del prompt: 63 cabezas a 1.350.000 = 85.050.000.
+    //
+    // Y va CON KILOS a propósito: existe el caso «kilos del lote + precio por
+    // cabeza», así que los kilos no desaparecen cuando la modalidad es CABEZA.
+    // En el histórico `peso_liquidado` y `precio_kg` se mueven juntas, las dos
+    // en 91 % — o sea que cuando el precio no era por kilo tampoco se guardaban
+    // los kilos. Este chequeo existe para que el formulario no herede ese
+    // agujero: si alguien atenuara u ocultara el campo, los kilos dejarían de
+    // llegar y esto se pondría en rojo.
     const porCabeza = resultadoOk<Res>(
       await (
         await nuevoLote({
           categoriaTexto: "novillo",
           cabezas: 63,
-          kilosPorCabeza: null,
+          kilosLiquidados: 25200,
           precio: 1350000,
           modalidadPrecio: "CABEZA",
           comision: 2,
@@ -429,12 +512,23 @@ async function main() {
         modalidadPrecio: true,
         comision: true,
         comisionModalidad: true,
+        kilosLiquidados: true,
       },
     });
+
+    chequear(
+      "con precio por CABEZA los kilos se guardan igual",
+      guardadoPorCabeza !== null &&
+        guardadoPorCabeza.modalidadPrecio === "CABEZA" &&
+        Number(guardadoPorCabeza.kilosLiquidados) === 25200,
+      `modalidad ${guardadoPorCabeza?.modalidadPrecio} con ` +
+        `${guardadoPorCabeza?.kilosLiquidados} kg — el campo no se atenúa ni se esconde`
+    );
     const paraImporte = guardadoPorCabeza
       ? {
           cabezas: guardadoPorCabeza.cabezas,
-          kilosOrigen: null,
+          // Están, y el importe por CABEZA no los usa: es lo que se quiere.
+          kilosLiquidados: Number(guardadoPorCabeza.kilosLiquidados),
           precio: Number(guardadoPorCabeza.precio),
           modalidadPrecio: guardadoPorCabeza.modalidadPrecio,
           comision: Number(guardadoPorCabeza.comision),

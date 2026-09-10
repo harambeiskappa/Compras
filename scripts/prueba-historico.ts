@@ -121,7 +121,20 @@ type DetalleRow = {
   id: number;
   liquidacion_id: number;
   cantidad_cabezas: number | null;
-  peso_origen: number | null;
+  /**
+   * `peso_liquidado`, NO `peso_origen`.
+   *
+   * La tabla vieja tiene las dos columnas, y sobre los 345 renglones del último
+   * año `peso_liquidado` está al 91 % y `peso_origen` al 0 %. Lo decidió el
+   * vocabulario: el papel dice «kilos liquidados» y la gente llenó la columna
+   * que se llamaba igual que el papel.
+   *
+   * Esta prueba venía insertando `peso_origen`, o sea la columna VACÍA: los
+   * kilos entraban siempre en NULL y la columna del modelo nuevo nunca se
+   * ejercitaba. Aprobaba igual, porque nullable acepta NULL — un verde que no
+   * probaba lo que decía probar.
+   */
+  peso_liquidado: number | null;
   precio_kg: number | null;
   comision: number | null;
   categoria_codigo: string | null;
@@ -160,7 +173,7 @@ function leerHistorico() {
 
     const detalles = db
       .prepare(
-        `SELECT d.id, d.liquidacion_id, d.cantidad_cabezas, d.peso_origen,
+        `SELECT d.id, d.liquidacion_id, d.cantidad_cabezas, d.peso_liquidado,
                 d.precio_kg, d.comision, c.codigo AS categoria_codigo
          FROM liquidaciones_detalleliquidacion d
          JOIN liquidaciones_liquidacion l ON l.id = d.liquidacion_id
@@ -428,10 +441,10 @@ async function main() {
               await tx.$executeRaw`
                 INSERT INTO lote (
                   "compraId", "tropaId", "categoriaSinonimoId", cabezas,
-                  "kilosOrigen", precio, comision, "creadoEn", "actualizadoEn"
+                  "kilosLiquidados", precio, comision, "creadoEn", "actualizadoEn"
                 ) VALUES (
                   ${compra.id}, NULL, ${sid}, ${d.cantidad_cabezas},
-                  ${d.peso_origen}, ${d.precio_kg}, ${d.comision}, now(), now()
+                  ${d.peso_liquidado}, ${d.precio_kg}, ${d.comision}, now(), now()
                 )
               `;
               lotesInsertados++;

@@ -528,8 +528,24 @@ model Lote {
   // error de carga, no un hecho de negocio.
   cabezas Int
 
-  // Peso, no dinero: se queda en Decimal(10, 2).
-  kilosOrigen Decimal? @db.Decimal(10, 2)
+  /// Los kilos DEL LOTE, tal como los dice el papel de la compra. Un solo
+  /// número: los kilos del papel son los mismos que van a la liquidación y no
+  /// se tocan.
+  ///
+  /// SE LLAMA COMO LO LLAMA EL PAPEL, y eso no es cosmético. El esquema viejo
+  /// tiene las DOS columnas en la misma tabla —`peso_liquidado` al 91 % de
+  /// cobertura y `peso_origen` al 0 %— y nadie decidió esa diferencia: la
+  /// decidió el vocabulario. La gente llenó la que se llamaba igual que el
+  /// documento que tenía delante. Llamarla `kilosOrigen` acá era elegir a
+  /// propósito el nombre que quedó vacío.
+  ///
+  /// El contraste del dominio es éste contra los kilos de LLEGADA (balanza,
+  /// módulo 4); de ahí sale el desbaste. Y el reclamo de kilos del módulo 3 NO
+  /// pisa este número: se guarda al lado, con su monto.
+  ///
+  /// Peso, no dinero: se queda en Decimal(10, 2). Nullable — si no se sabe, es
+  /// «s/d», y el promedio por cabeza simplemente no se calcula.
+  kilosLiquidados Decimal? @db.Decimal(10, 2)
 
   precio          Decimal?         @db.Decimal(14, 2)
   modalidadPrecio ModalidadPrecio?

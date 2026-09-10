@@ -28,7 +28,7 @@ export type RenglonEnPantalla = {
   categoriaCodigo: string | null;
   categoriaDescripcion: string | null;
   cabezas: number;
-  kilosOrigen: number | null;
+  kilosLiquidados: number | null;
   precio: number | null;
   modalidadPrecio: ModalidadPrecio | null;
   comision: number | null;
@@ -42,7 +42,7 @@ export type OpcionSimple = { id: number; nombre: string };
 type Borrador = {
   categoriaTexto: string;
   cabezas: string;
-  kilosPorCabeza: string;
+  kilosLiquidados: string;
   precio: string;
   modalidadPrecio: ModalidadPrecio | "";
   comision: string;
@@ -60,11 +60,12 @@ function aNumero(v: string): number | null {
 }
 
 function deRenglon(r: RenglonEnPantalla): Borrador {
-  const porCabeza = r.kilosOrigen === null ? null : kilosPorCabeza(r.kilosOrigen, r.cabezas);
   return {
     categoriaTexto: r.categoriaTexto,
     cabezas: String(r.cabezas),
-    kilosPorCabeza: porCabeza === null ? "" : String(porCabeza),
+    // Lo guardado ES lo que se muestra: no hay conversión de ida ni de vuelta,
+    // así que el número vuelve idéntico al que la persona copió del papel.
+    kilosLiquidados: r.kilosLiquidados === null ? "" : String(r.kilosLiquidados),
     precio: r.precio === null ? "" : String(r.precio),
     modalidadPrecio: r.modalidadPrecio ?? "",
     comision: r.comision === null ? "" : String(r.comision),
@@ -74,11 +75,28 @@ function deRenglon(r: RenglonEnPantalla): Borrador {
   };
 }
 
+/**
+ * Al copiar un renglón, lo que es PROPIO DE ESE LOTE se vacía.
+ *
+ * Las cabezas siempre lo fueron. Los kilos pasaron a serlo cuando el campo se
+ * dio vuelta: mientras se pedían POR CABEZA, copiarlos era razonable —dos lotes
+ * de la misma categoría pesan parecido por animal—, pero el TOTAL del lote
+ * depende de cuántas cabezas tiene, así que heredarlo dejaría un número que
+ * nadie escribió para ese renglón. Es la misma regla de siempre: un valor
+ * heredado en silencio es un dato inventado.
+ *
+ * Lo que sí se copia —categoría, precio, comisión, establecimiento— es lo que
+ * de verdad se repite entre renglones de una misma compra.
+ */
+function sinLoPropioDelLote(b: Borrador): Borrador {
+  return { ...b, cabezas: "", kilosLiquidados: "" };
+}
+
 /** UN RENGLÓN NUEVO NACE EN «s/d». Nada se hereda en silencio. */
 const EN_BLANCO: Borrador = {
   categoriaTexto: "",
   cabezas: "",
-  kilosPorCabeza: "",
+  kilosLiquidados: "",
   precio: "",
   modalidadPrecio: "",
   comision: "",
@@ -91,7 +109,7 @@ function aDatos(b: Borrador): DatosLote {
   return {
     categoriaTexto: b.categoriaTexto,
     cabezas: aNumero(b.cabezas),
-    kilosPorCabeza: aNumero(b.kilosPorCabeza),
+    kilosLiquidados: aNumero(b.kilosLiquidados),
     precio: aNumero(b.precio),
     modalidadPrecio: b.modalidadPrecio === "" ? null : b.modalidadPrecio,
     comision: aNumero(b.comision),
@@ -127,7 +145,7 @@ export function Renglones({
       totalesDeCompra(
         renglones.map((r) => ({
           cabezas: r.cabezas,
-          kilosOrigen: r.kilosOrigen,
+          kilosLiquidados: r.kilosLiquidados,
           precio: r.precio,
           modalidadPrecio: r.modalidadPrecio,
           comision: r.comision,
@@ -235,7 +253,7 @@ export function Renglones({
             tropas={tropas}
             sinonimos={sinonimos}
             avisar={setErrores}
-            duplicar={() => agregar({ ...deRenglon(r), cabezas: "" })}
+            duplicar={() => agregar(sinLoPropioDelLote(deRenglon(r)))}
           />
         ))}
       </div>
@@ -264,14 +282,15 @@ export function Renglones({
           {renglones.length > 0 && (
             <button
               type="button"
-              // Lo que cambia entre renglones son las cabezas; el resto se
-              // repite. Copia todo MENOS las cabezas, que quedan en s/d — y
-              // así el valor copiado es uno que alguien está mirando, no uno
-              // heredado en silencio.
-              onClick={() => agregar({ ...deRenglon(renglones[renglones.length - 1]), cabezas: "" })}
+              // Lo que cambia entre renglones son las cantidades del lote; el
+              // resto —categoría, precio, comisión, establecimiento— se repite.
+              // Ver `sinLoPropioDelLote`.
+              onClick={() =>
+                agregar(sinLoPropioDelLote(deRenglon(renglones[renglones.length - 1])))
+              }
               style={botonSecundario}
             >
-              ＋ Otro igual al último, sin las cabezas
+              ＋ Otro igual al último, sin las cabezas ni los kilos
             </button>
           )}
         </div>
@@ -589,10 +608,12 @@ function Editor({
   const set = (parche: Partial<Borrador>) => setBorrador({ ...borrador, ...parche });
 
   const cabezas = aNumero(borrador.cabezas);
-  const porCabeza = aNumero(borrador.kilosPorCabeza);
-  const totalKilos =
-    cabezas !== null && porCabeza !== null
-      ? (Math.round(porCabeza * 100) * cabezas) / 100
+  const kilos = aNumero(borrador.kilosLiquidados);
+  // El promedio se DERIVA del total, y solo si están los dos. Sin kilos no se
+  // muestra nada: un promedio de 0 diría que el lote no pesa.
+  const promedio =
+    cabezas !== null && cabezas > 0 && kilos !== null
+      ? kilosPorCabeza(kilos, cabezas)
       : null;
 
   // El texto tipeado se resuelve contra lo que ya se conoce, solo para mostrar
@@ -695,18 +716,32 @@ function Editor({
           />
         </div>
 
+        {/*
+          SE PIDE EL TOTAL DEL LOTE Y SE MUESTRA EL PROMEDIO DERIVADO.
+
+          El papel dice los kilos del lote, y el promedio por cabeza ya viene
+          calculado ahí mismo. Pedirlo al revés obliga a dividir a mano lo que
+          el documento ya trae, y un campo que no se parece al papel es un campo
+          que se llena mal o no se llena — el 0 % de cobertura de `peso_origen`
+          en el sistema viejo es exactamente eso.
+
+          Y NO SE ATENÚA NI SE ESCONDE CUANDO EL PRECIO ES POR CABEZA: existe el
+          caso «kilos del lote + precio por cabeza», los kilos se conocen igual,
+          y son el dato que después permite calcular el desbaste contra la
+          balanza. En el histórico `peso_liquidado` y `precio_kg` se mueven
+          juntas, las dos en 91 % — o sea que cuando el precio no era por kilo
+          tampoco se guardaban los kilos. Es otro agujero de captura del mismo
+          tipo, y este formulario no lo hereda.
+        */}
         <div>
-          <div style={rotuloCampo}>Kilos por cabeza</div>
+          <div style={rotuloCampo}>Kilos del lote</div>
           <input
-            value={borrador.kilosPorCabeza}
-            onChange={(e) => set({ kilosPorCabeza: e.target.value })}
+            value={borrador.kilosLiquidados}
+            onChange={(e) => set({ kilosLiquidados: e.target.value })}
             inputMode="decimal"
             placeholder="s/d"
             className="campo"
           />
-          {/* SE PIDE POR CABEZA Y EL TOTAL SE MUESTRA DERIVADO: la casa escribe
-              por cabeza (91 % de cobertura) y el total nunca (0 %). Lo que se
-              guarda es el total, porque el total es el hecho. */}
           <div
             style={{
               marginTop: 4,
@@ -714,7 +749,7 @@ function Editor({
               color: "var(--tinta-tenue)",
             }}
           >
-            {totalKilos === null ? "total s/d" : `total ${totalKilos} kg`}
+            {promedio === null ? "promedio s/d" : `promedio ${promedio} kg por cabeza`}
           </div>
         </div>
 

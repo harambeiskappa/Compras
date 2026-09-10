@@ -71,22 +71,25 @@ export function redondear(n: number): number {
 }
 
 /**
- * Kilos por cabeza → kilos totales, EXACTO.
+ * El promedio por cabeza, DERIVADO del total del lote.
  *
- * `Lote.kilosOrigen` guarda el TOTAL porque el total es el hecho, pero la casa
- * escribe por cabeza —medido: por cabeza 91 % de cobertura, total 0 %— así que
- * la conversión la hace el formulario.
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │ EL FORMULARIO PIDE EL TOTAL Y MUESTRA ESTO AL LADO, no al revés.         │
+ * │                                                                          │
+ * │ El papel de la compra dice los kilos DEL LOTE, y el promedio por cabeza  │
+ * │ ya viene calculado ahí mismo. Un formulario que pide por cabeza obliga a │
+ * │ dividir a mano lo que el documento ya trae — y un campo que no se parece │
+ * │ al papel es un campo que se llena mal o no se llena. Ese es exactamente  │
+ * │ el 0 % de cobertura de `peso_origen` en el sistema viejo.                │
+ * │                                                                          │
+ * │ Lo guardado es UN solo número, el total, que es el hecho. Esto no se     │
+ * │ guarda: se calcula cada vez que se mira.                                 │
+ * └──────────────────────────────────────────────────────────────────────────┘
  *
- * Se multiplica en centésimos ENTEROS y recién ahí se divide. En punto
- * flotante, `412.33 * 3` da 1236.9899999999998, que guardado y vuelto a
- * dividir no devuelve 412.33 — y el número que la persona escribió tiene que
- * poder volver a mostrarse igual.
+ * Se redondea a propósito. En punto flotante `16493.2 / 40` da
+ * `412.33000000000004`, y lo que se muestra tiene que ser el número que la
+ * persona reconoce del papel.
  */
-export function kilosTotales(porCabeza: number, cabezas: number): number {
-  return (Math.round(porCabeza * 100) * cabezas) / 100;
-}
-
-/** El camino de vuelta: el total guardado se muestra por cabeza. */
 export function kilosPorCabeza(total: number, cabezas: number): number | null {
   if (!cabezas) return null;
   return redondear(total / cabezas);
@@ -97,7 +100,7 @@ export type ModalidadComision = "PORCENTAJE" | "MONTO";
 
 export type RenglonParaCalculo = {
   cabezas: number;
-  kilosOrigen: number | null;
+  kilosLiquidados: number | null;
   precio: number | null;
   modalidadPrecio: ModalidadPrecio | null;
   comision: number | null;
@@ -113,7 +116,7 @@ export type RenglonParaCalculo = {
 export function importeDelRenglon(r: RenglonParaCalculo): number | null {
   if (r.precio === null || r.modalidadPrecio === null) return null;
   if (r.modalidadPrecio === "KG") {
-    return r.kilosOrigen === null ? null : redondear(r.precio * r.kilosOrigen);
+    return r.kilosLiquidados === null ? null : redondear(r.precio * r.kilosLiquidados);
   }
   return redondear(r.precio * r.cabezas);
 }
@@ -163,12 +166,12 @@ export function totalesDeCompra(renglones: RenglonParaCalculo[]): TotalesCompra 
     // siempre completa. Se muestra igual: la cobertura no se omite cuando da
     // bien, porque entonces nadie sabe si se miró.
     cabezas: sumar(renglones.map((r) => r.cabezas)),
-    kilos: sumar(renglones.map((r) => r.kilosOrigen)),
+    kilos: sumar(renglones.map((r) => r.kilosLiquidados)),
     kilosPorCabeza: promedioPonderado(
       renglones.map((r) => ({
         // Solo los renglones CON kilos entran, y entran con su peso en cabezas.
-        magnitud: r.kilosOrigen,
-        peso: r.kilosOrigen === null ? null : r.cabezas,
+        magnitud: r.kilosLiquidados,
+        peso: r.kilosLiquidados === null ? null : r.cabezas,
       }))
     ),
     importe: sumar(renglones.map(importeDelRenglon)),

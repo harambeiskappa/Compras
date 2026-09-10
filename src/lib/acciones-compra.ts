@@ -5,7 +5,6 @@ import { exigir, SinPermiso } from "@/lib/auth";
 import { resolverCategoria } from "@/lib/categorias";
 import { prisma } from "@/lib/prisma";
 import { refrescar } from "@/lib/refrescar";
-import { kilosTotales } from "@/lib/totales";
 
 /**
  * Tropas, cargas y renglones: lo que la oficina arma con los papeles delante.
@@ -220,8 +219,11 @@ export type DatosLote = {
   /** Texto libre. Se resuelve contra el diccionario; si no matchea, se guarda igual. */
   categoriaTexto: string;
   cabezas: number | null;
-  /** POR CABEZA. El total se calcula y se guarda; el hecho es el total. */
-  kilosPorCabeza: number | null;
+  /**
+   * LOS KILOS DEL LOTE, tal como los dice el papel. Se guardan como llegan: el
+   * promedio por cabeza lo calcula la pantalla y no se guarda.
+   */
+  kilosLiquidados: number | null;
   precio: number | null;
   modalidadPrecio: ModalidadPrecio | null;
   comision: number | null;
@@ -299,7 +301,7 @@ export async function borrarLote(id: number): Promise<ResultadoCompra> {
 type CamposLote = {
   categoriaSinonimoId: number;
   cabezas: number;
-  kilosOrigen: number | null;
+  kilosLiquidados: number | null;
   precio: number | null;
   modalidadPrecio: ModalidadPrecio | null;
   comision: number | null;
@@ -323,7 +325,7 @@ async function prepararLote(
     errores.push("Las cabezas tienen que ser un entero mayor que cero.");
   }
 
-  const porCabeza = oNumero(datos.kilosPorCabeza, "kilos por cabeza", errores);
+  const kilos = oNumero(datos.kilosLiquidados, "kilos del lote", errores);
   const precio = oNumero(datos.precio, "precio", errores);
   const comision = oNumero(datos.comision, "comisión", errores);
 
@@ -352,9 +354,11 @@ async function prepararLote(
     data: {
       categoriaSinonimoId: categoria.sinonimoId,
       cabezas: cabezas!,
-      // El formulario pide POR CABEZA y acá se guarda el TOTAL, que es el
-      // hecho. La multiplicación es exacta en centésimos: ver `kilosTotales`.
-      kilosOrigen: porCabeza === null ? null : kilosTotales(porCabeza, cabezas!),
+      // SE GUARDA LO QUE LA PERSONA ESCRIBIÓ, sin convertir nada. El papel dice
+      // los kilos del lote, así que eso es lo que pide el formulario y eso es
+      // lo que entra. El promedio por cabeza se deriva al mostrarlo — antes se
+      // hacía al revés y era el formulario el que obligaba a dividir a mano.
+      kilosLiquidados: kilos,
       precio,
       modalidadPrecio: datos.modalidadPrecio,
       comision,

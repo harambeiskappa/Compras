@@ -8,16 +8,23 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ---
 
-## Dónde retomamos — actualizado 2026-09-09 (auth cerrada)
+## Dónde retomamos — actualizado 2026-09-10 (fase 1 completa)
 
-**Próximo paso concreto:** el **documento de diseño de la bandeja de la oficina** —la otra mitad del módulo 2, donde un reporte se convierte en una compra— más un addendum corto para Claude Design: **el quinto estado**, el del reporte que el servidor rechazó y hoy queda inalcanzable.
+**Próximo paso concreto:** Claude Code cierra las dos correcciones de kilos —`docs/prompt-kilos-total.md` y `docs/prompt-renombrar-kilos.md`—, y **recién después** sale el documento de diseño del módulo 3 para Claude Design.
+
+**El orden lo eligió Iñaki y es el correcto:** las dos correcciones tocan la bandeja, que es la pantalla que Design va a tener al lado cuando diseñe la liquidación. Mandarle un documento nuevo mientras la pantalla anterior está a medio corregir es pedirle que diseñe contra algo que se mueve.
+
+Las 8 decisiones de `docs/prompt-arranque-modulo-3.md` están **todas cerradas**, así que el documento de diseño no está bloqueado por nada más. **Iñaki eligió plantear el módulo 3 primero y testear de punta a punta después**, con el circuito completo a la vista. El argumento a favor: algunas decisiones del módulo 2 recién se validan cuando se sabe qué necesita el 3, y encontrar ahora que falta algo es barato porque `lote` está vacía.
+
+**Con un límite: plantear no es construir.** Se mide, se escribe el documento, se cierran las decisiones, y recién ahí se decide qué se construye.
 
 | | |
 |---|---|
-| **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | Módulo 1 cerrado. **La pantalla del comprador y el offline, construidos y verificados.** Falta la bandeja de la oficina. |
+| **Fase** | 1 — Módulos 1 y 2. **Completa.** |
+| **Situación** | Todo construido, verificado y en producción. Sin uso real todavía. |
 | **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
-| **Repo** | `github.com/harambeiskappa/Compras` → `inaki-pegsa/compras` → https://compras-ten-mu.vercel.app · `main` en `f445eff` |
+| **Repo** | `github.com/harambeiskappa/Compras` → https://compras-ten-mu.vercel.app |
+| **Verificación** | `npm run verificar` — ocho verificaciones, **86 en verde, 0 en rojo** |
 | **Base** | Supabase `compras-db`, São Paulo, plan free. Una sola cuenta: `admin`. |
 | **Base de referencia** | `C:\Users\zemma\Claude\Projects\WinCompras\backend\db.sqlite3` (solo lectura) |
 
@@ -1024,3 +1031,127 @@ El aviso de empresa titular quedó pendiente desde el módulo 1 porque **no hab�
 **Y el histórico nunca lo justificó.** El «90,8 % por kilo, el resto por bulto o por cabeza» que anduvo dando vueltas desde la primera medición era una inferencia mía: **el esquema viejo no guarda la modalidad**. La distinción entró por la puerta del vocabulario, no del dato, y sobrevivió cuatro documentos sin que nadie la mirara de frente.
 
 Regla 14 de `CLAUDE.md` reescrita. `docs/prompt-bulto.md` reemplazado — el anterior decía lo contrario y quedaba peligroso: **una instrucción equivocada es peor que ninguna, igual que una nota que explica un razonamiento falso.**
+
+---
+
+### 2026-09-10 · `BULTO` fuera. 86 en verde, y una migración que se rompía a sí misma
+
+**Cero renglones movidos: la tabla `lote` está vacía.** Era un problema teórico hoy, **y por eso es el mejor momento**: es exactamente el mismo razonamiento que con el padrón único — era lo más barato que iba a ser nunca. El paso del `UPDATE` quedó igual en la migración, con el motivo escrito: **el archivo tiene que ser correcto el día que corra sobre datos, no solo hoy.**
+
+**La guarda de re-ejecución no es decorativa, y el mecanismo es nuevo.** Sin ella, la segunda corrida fallaría con `invalid input value for enum` en el `WHERE "modalidadPrecio" = 'BULTO'` — **precisamente porque la primera corrida sacó la etiqueta**. La migración se rompería a sí misma al reintentarse. La regla que teníamos era «escribí las migraciones re-ejecutables»; lo que aparece acá es que **cuando lo que cambia es un tipo, la guarda tiene que ser sobre el tipo y no sobre las filas** — si no, el paso que preserva el dato se vuelve imposible de repetir por culpa del paso que lo sigue.
+
+**La verificación se hizo en la base, no en la pantalla:** un `UPDATE` crudo por SQL con `'BULTO'` que la base tiene que rechazar, y lo rechaza con `22P02`. **Esconder la opción del selector no impide un INSERT**, así que verificarlo en la pantalla habría sido otro verde vacío. Sexta aplicación de la misma regla, y esta vez preventiva: no se equivocó y después lo arregló, lo pensó antes.
+
+**Y la mejor observación del informe es sobre un rojo que él mismo causó.** Al insertar los chequeos nuevos después del punto 1, el renglón de 63 cabezas le cambió la cobertura de «2 de 3» a «2 de 4» y lo puso en rojo. Movió el bloque, pero anotó lo que importa: **el chequeo 1 es el que protege el error fundacional del proyecto, y es bueno que sea frágil ante un renglón de más.** Si hubiera seguido en verde con cuatro renglones, **no estaría mirando la cobertura** — estaría mirando cualquier otra cosa. Un chequeo de cobertura que no se rompe cuando cambia el universo no es un chequeo de cobertura.
+
+**El caso concreto, cerrado:** 63 cabezas a 1.350.000 → importe 85.050.000, comisión al 2 % → 1.701.000. **`npm run verificar`: 86 en verde, 0 en rojo.**
+
+---
+
+**Con esto la fase 1 está completa.** Módulo 1 —información de la compra— y módulo 2 —el reporte del comprador y la bandeja de la oficina— construidos, verificados y en producción, con auth, cuentas y ocho verificaciones bajo un solo comando.
+
+---
+
+### 2026-09-10 · Módulo 3 medido: la liquidación vieja es casi toda dato derivado
+
+`docs/prompt-arranque-modulo-3.md`. **Ocho columnas resultaron ser cuentas guardadas**, reconstruidas contra los datos reales: `importe = peso_liquidado × precio_kg` (100 %), `kg_x_cab = peso_liquidado / cabezas` (100 %), `total_c_iva = importe + iva + comisión` (99 %), `importe_hacienda`, `comision` e `impuestos` de cabecera son **exactamente la suma de sus renglones** (100 % las tres), `compra_total = hacienda + comisión` (99 %), y los tres `costo_puesto_*` salen del flete y de los kilos de llegada.
+
+**Dos hallazgos que valen por sí solos:**
+
+**`importe_total` es una copia literal de `importe_hacienda`, en el 100 % de los casos.** Dos columnas, el mismo número, seis años. Nadie lo notó porque nada obliga a mirarlas juntas — que es exactamente la forma en que un dato duplicado sobrevive.
+
+**`compra_total` no es el total de la compra: es `hacienda + comisión`, sin impuestos.** Una columna que se llama «total» y no lo es, y cualquiera que la sume creyendo el nombre se equivoca por unos once puntos. **El nombre de una columna es documentación, y una documentación equivocada es peor que ninguna** — es la misma lección que la nota del `BULTO`, ahora a escala de esquema.
+
+## El flete: no falta, miente
+
+Está en **1 de 117**, y Iñaki confirmó que **existe y se paga; nunca se cargó**. Consecuencia: las 62 compras con `costo_puesto_kg` cargado tienen un número que **no incluye el flete y se llama «puesto» igual**. No es un dato faltante, es un dato equivocado con nombre de correcto. **Capturar el flete es la razón de ser del módulo 3.**
+
+## El costo puesto no se puede cerrar en el módulo 3
+
+Verificado: `costo_puesto_kg = costo_puesto_total / kg_llegada`, y **los kilos de llegada son de la balanza, o sea del módulo 4**. La liquidación fija lo que se paga; el costo puesto por kilo recién existe cuando la hacienda llegó y se pesó. Un diseño que prometa el costo puesto dentro del módulo 3 va a mostrarlo en s/d la mitad del tiempo — o peor, va a calcularlo sobre los kilos liquidados y dar un número parecido pero distinto. Es la decisión #6 y hay que tomarla antes de escribir código.
+
+## Una corrección a lo que le dije a Claude Design
+
+Le pasé que «la casa escribe los kilos por cabeza (91 %) y el total nunca (0 %)», apoyado en `kg_x_cab`. **`kg_x_cab` es una columna derivada de `peso_liquidado`, que es un dato de la LIQUIDACIÓN, no de la compra.** O sea que ese 91 % nunca fue evidencia sobre lo que la oficina escribe al armar la compra: era evidencia sobre otra etapa.
+
+**La conclusión de fondo se sostiene por otra vía**, y mejor: Iñaki confirmó que **el remito trae los kilos casi siempre**, así que el 0 % de `peso_origen` es un agujero de captura puro y el campo del módulo 2 es el que lo cierra. Pero **la razón que le di al diseño era falsa**, y queda pendiente si el campo debe pedir el total —como lo dice el remito— o por cabeza.
+
+Es la tercera vez en dos días que una decisión correcta viene con la razón equivocada —las teclas de camiones, el `BULTO`, y ahora esto—, y las tres veces la razón equivocada fue mía o pasó por mí sin que la chequeara. **La razón sobrevive a la decisión: es lo que alguien va a usar para decidir el próximo caso.**
+
+## Una suposición declarada
+
+Iñaki no contestó si los kilos que se facturan pueden diferir de los del remito. **Asumo que sí y que la diferencia importa**, por dos razones: existen `reclamo_kg` y `reclamo_monto` en el 5-6 % de los renglones —un reclamo por kilos solo tiene sentido si los kilos pueden discrepar—, y es el mismo patrón que ya está en el proyecto con cabezas compradas contra llegadas. Queda como suposición explícita, para revisar.
+
+---
+
+### 2026-09-10 · El papel dice el total del lote, y el formulario lo pedía al revés
+
+**Iñaki describió el documento real:** dice **los kilos liquidados del lote comprado**, y aparte aclara **KG promedio** y **el precio por kilo**. Y existe la otra forma, **kilos del lote más precio por cabeza**.
+
+**O sea que el número que la persona tiene delante es el total, y el promedio ya viene calculado en el propio papel.** El formulario de la bandeja pedía por cabeza y mostraba el total: **invertido respecto del documento que se está copiando**. Se da vuelta. No hace falta migración — `Lote.kilosOrigen` ya guarda el total y el otro se deriva.
+
+**Y no es cosmético.** Un formulario que obliga a convertir a mano lo que el papel ya trae es un formulario que se llena mal o no se llena. **El 0 % de cobertura histórica de los kilos de origen es exactamente lo que pasa cuando el campo no se parece al documento.** Es la misma lección que «establecimiento» en vez de «destino»: si el campo se llama y se comporta como el papel, nadie tiene que traducir.
+
+**Segundo hallazgo del mismo dato:** los kilos aparecen **también cuando el precio es por cabeza**. En el histórico `peso_liquidado` y `precio_kg` se mueven juntas —las dos en 91 %—, o sea que **cuando el precio no era por kilo tampoco se guardaban los kilos**. Otro agujero de captura, y el formulario no lo tiene que heredar: el campo de kilos no se atenúa cuando la modalidad es `CABEZA`.
+
+**El error fue mío y ya lo había marcado media hora antes:** usé el 91 % de `kg_x_cab` como evidencia de lo que la oficina escribe, cuando `kg_x_cab` es una **columna derivada** de un dato de la liquidación. Corregí los dos documentos de diseño en su lugar, tachado y con la fecha, en vez de reescribirlos en silencio — **un documento que cambia de opinión sin decirlo hace dudar de todo lo demás que dice.**
+
+**Y abre la pregunta que ahora es el centro del módulo 3:** si el papel de la compra ya trae «kilos liquidados», ¿son ese mismo número los kilos de la liquidación, o pueden volver a moverse? Es la decisión #3 del documento de arranque y decide si son un dato o dos.
+
+---
+
+### 2026-09-10 · Los kilos son un solo hecho, y el sistema viejo lo venía gritando
+
+**Confirmado por Iñaki: los kilos del papel de la compra son los mismos que van a la liquidación, y no se tocan.** No hay dos números: hay uno. **Cierra la decisión #3 del módulo 3** y el campo ya está capturado en el módulo 2.
+
+**Y hay una confirmación del sistema viejo que hasta ahora había leído como un agujero y es otra cosa.** `liquidaciones_detalleliquidacion` tiene **las dos columnas**: `peso_origen` en **0 %** y `peso_liquidado` en **91 %**, sobre los mismos 345 renglones.
+
+**Nadie decidió eso: lo decidió el vocabulario.** El papel dice «kilos liquidados», así que la gente llenó la columna que se llamaba igual que el papel y dejó vacía la que no. **Es la tesis entera del proyecto contenida en dos columnas de la misma tabla** — y durante todo el análisis yo leí ese 0 % como «no capturan los kilos», cuando lo que decía era «no usan ese nombre».
+
+**Consecuencia inmediata:** `Lote.kilosOrigen` se renombra a `Lote.kilosLiquidados`. Con `lote` en 0 filas es lo más barato que va a ser nunca — mismo argumento que el padrón y el `BULTO`. Y sobre todo: **repetir en el esquema nuevo el nombre que quedó vacío en el viejo sería elegir a propósito el que no se usa.**
+
+**El módulo 3 queda más fino de lo que esperaba.** Con kilos y precio ya capturados, el importe se calcula hoy. La liquidación agrega cuatro cosas y no reescribe ninguna: el número y la fecha, los impuestos, el flete con su factura, y los reclamos —que **no pisan los kilos**, se guardan al lado—. Eso cambia el peso de la decisión #1: «entidad propia o campos de `Compra`» pasa a decidirse casi enteramente por si una compra puede liquidarse más de una vez, y no por el volumen de datos.
+
+---
+
+### 2026-09-10 · Una compra, una liquidación — y por qué hubo que preguntarlo
+
+**Cerradas las decisiones #1 y #2 del módulo 3.** Una compra se liquida una sola vez, así que la liquidación **no es una entidad propia**: son campos de `Compra`. Una tabla aparte que siempre tendría exactamente una fila es el mismo concepto en dos lugares — regla 2.
+
+**Lo que vale registrar es por qué la pregunta existía.** En el esquema viejo la liquidación **es** la fila de la compra: una tabla, una fila. Así que aunque el caso de una compra liquidada en dos veces existiera en la realidad, **el esquema no lo podría haber mostrado nunca** — no tiene dónde ponerlo.
+
+**Un dato que el esquema no puede representar se ve idéntico a un dato que no existe.** Es la misma familia que el aviso que no podía detectar lo que la consulta estricta ya había descartado, y que la condición inalcanzable de la prueba histórica: **la ausencia de evidencia solo vale como evidencia si el instrumento podía traerla.** Por eso esta no se medía, se preguntaba.
+
+`n_liquidacion` queda nullable: **«sin liquidar» es un estado real**, y está en el 43 % del histórico.
+
+**Quedan cinco decisiones abiertas** en el módulo 3: qué compone los impuestos (#4), si el flete es por compra, por carga o por camión (#5), si el costo puesto se cierra en el 3 o en el 4 (#6), si el reclamo es entidad propia (#7), y qué son `precio_ajustado` y `precio_con_comision` al 11 % (#8).
+
+---
+
+### 2026-09-10 · Tres decisiones más cerradas, y el costo puesto no vive en ningún módulo
+
+**#5 — El flete se factura POR CAMIÓN.** Vive en `Carga.flete`, que ya existe desde el módulo 2; el total de la compra se **calcula** sumando las cargas. El `logistica_total` de la cabecera del sistema viejo era un total guardado más. Falta sumar la referencia de la factura al lado del monto.
+
+**#6 — El costo puesto no se cierra en el módulo 3 ni en el 4: no se guarda en ninguno.** Es `(compra + flete) / kilos de llegada`. Se calcula donde se muestre, y mientras no existan los kilos de llegada es **«s/d — faltan los kilos de llegada»**: información, no un hueco. La pregunta estaba mal planteada por mí — buscaba **dónde vive** un número que, por la regla 2, no vive en ningún lado.
+
+**#8 — Resuelta midiendo, no preguntando.** `precio_ajustado` es el **precio por kilo llegado**: `importe / peso_llegada` en el 66 % de los casos y prorrateado a nivel compra en el 34 % restante — **100 % entre las dos formas**. Y `precio_con_comision = precio_ajustado × (1 + comisión/importe)` en el **100 %**. Dos derivadas más, de la misma familia que el costo puesto.
+
+**Con esto van once columnas del sistema viejo demostradas como cuentas guardadas.** No es una crítica al que las hizo: en una planilla no hay otra forma. Es la razón por la que este proyecto existe.
+
+## Y un hallazgo que se paga en el módulo 4: el desbaste puede ser NEGATIVO
+
+Entre las compras con desbaste cargado hay **−6,3 %, −1,85 % y −1,74 %**: la hacienda llegó **pesando más** de lo liquidado. No es un error de carga: es la misma forma que «cabezas compradas ≠ llegadas, en los dos sentidos», que ya es la regla 5.
+
+**Cualquier validación que asuma desbaste ≥ 0 va a rechazar casos reales.** Quedó anotado en el documento de arranque, donde lo va a leer quien construya el módulo 4 — se descubre midiendo la liquidación, pero se paga dos módulos más adelante.
+
+---
+
+### 2026-09-10 · Las ocho decisiones del módulo 3, cerradas
+
+**#4 — Impuestos: IVA más percepciones, guardados SEPARADOS.** Son conceptos distintos y no siempre están los dos. El sistema viejo los tiene **fundidos en una sola columna** `iva` por renglón —por eso la medición daba ~10,9 % y no el 10,5 % del IVA sobre hacienda— y **esa fusión es exactamente el motivo de separarlos**: hoy nadie puede decir cuánto fue impuesto y cuánto percepción. Ninguno se recalcula desde una alícuota; se capturan.
+
+**#7 — El reclamo es una tabla propia.** Es un reclamo **al consignatario, que puede o no prosperar**: tiene estado y fecha, o sea vida propia. Dos columnas en el renglón no podrían representar «reclamado y todavía sin respuesta». Y **nunca pisa los kilos ni el importe**: se guarda al lado, como todo lo demás.
+
+**Las ocho cerradas.** Tres se cerraron **midiendo** (#3 dónde viven los kilos, #6 el costo puesto, #8 los precios ajustados) y cinco **preguntando** (#1, #2, #4, #5, #7).
+
+**Y hay un patrón en cuál fue cuál, que vale más que las decisiones.** Las cinco que hubo que preguntar son, todas, las que **el esquema viejo no podía contestar**: porque fundía dos conceptos en una columna (los impuestos), porque guardaba un total donde había un detalle (el flete), o porque no tenía dónde representar el caso (una compra con dos liquidaciones, un reclamo pendiente). **Los datos contestan las preguntas que su esquema permitió hacer; el resto hay que preguntárselo a una persona.** Es la versión general de lo que ya nos había pasado tres veces con las pruebas.
