@@ -209,6 +209,9 @@ model Usuario {
   comprasCreadas  Compra[]        @relation("CompraCreadaPor")
   reportesCreados ReporteCompra[] @relation("ReporteCreadoPor")
 
+  /// Reportes cuyo estado cambió esta cuenta: procesar, revertir o descartar.
+  reportesEstadoCambiado ReporteCompra[] @relation("EstadoDeReporteCambiadoPor")
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -221,6 +224,17 @@ enum EstadoReporte {
   PENDIENTE
   PROCESADO
   DESCARTADO
+}
+
+/// Por qué la oficina descartó un reporte.
+///
+/// Tiene columna propia porque la pantalla del comprador promete que va a ver
+/// que se descartó Y POR QUÉ. `observaciones` no sirve para eso: es del
+/// comprador y es evidencia — la oficina no escribe ahí.
+enum MotivoDescarte {
+  DUPLICADO
+  ERROR
+  NO_SE_HIZO
 }
 
 /// Lo que manda el comprador desde la feria.
@@ -277,6 +291,19 @@ model ReporteCompra {
   recibidoEn DateTime @default(now())
 
   estado EstadoReporte @default(PENDIENTE)
+
+  /// Por qué se descartó. Solo tiene sentido con `estado = DESCARTADO`.
+  motivoDescarte MotivoDescarte?
+
+  /// QUIÉN CAMBIÓ EL ESTADO Y CUÁNDO — y no alcanza con `actualizadoEn`.
+  ///
+  /// Marcar procesado le congela la pantalla al comprador, y descartar le dice
+  /// que su trabajo no se usó: son decisiones que le SACAN algo a otra persona,
+  /// y la reversión también. `actualizadoEn` se mueve con cualquier cambio —una
+  /// nota, un número de remito— así que no puede contestar quién congeló esto.
+  estadoCambiadoPorUsuarioId Int?
+  estadoCambiadoPorUsuario   Usuario?  @relation("EstadoDeReporteCambiadoPor", fields: [estadoCambiadoPorUsuarioId], references: [id])
+  estadoCambiadoEn           DateTime?
 
   /// Quién cargó este reporte. Nullable por el mismo motivo que en `Compra`.
   creadoPorUsuarioId Int?

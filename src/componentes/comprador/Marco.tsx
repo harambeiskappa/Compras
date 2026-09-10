@@ -40,10 +40,30 @@ export function AvisoCola() {
 
   const sinRed = !estado.hayRed;
   const esperando = estado.esperando > 0;
+  const rechazados = estado.rechazados > 0;
 
   // Nada que decir: ni cola ni problema de red. Callarse es la respuesta
   // correcta — un cartel permanente de «todo bien» se vuelve invisible.
-  if (!esperando && !sinRed && !estado.ultimoError) return null;
+  if (!esperando && !rechazados && !sinRed && !estado.ultimoError) return null;
+
+  // EL QUINTO ESTADO VA PRIMERO: es el único que necesita que alguien haga
+  // algo, y taparlo con el ámbar tranquilo de «esperando señal» lo dejaría
+  // pasando desapercibido justo cuando no se va a resolver solo.
+  if (rechazados) {
+    return (
+      <Banda tono="aviso">
+        <span>
+          <strong>
+            {estado.rechazados === 1
+              ? "Un reporte no lo pudo recibir la oficina."
+              : `${estado.rechazados} reportes no los pudo recibir la oficina.`}
+          </strong>{" "}
+          No se perdió nada: siguen en el teléfono. Hay que corregirlos o
+          descartarlos en <a href="/reportes">mis reportes</a>.
+        </span>
+      </Banda>
+    );
+  }
 
   if (estado.ultimoError && !esperando) {
     return (

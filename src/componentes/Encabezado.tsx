@@ -92,6 +92,18 @@ export function Encabezado({ usuario }: { usuario: UsuarioSesion | null }) {
         */}
         {usuario.rol === "ADMINISTRATIVO" && (
           <Link
+            href="/bandeja"
+            style={{
+              font: "500 13px var(--font-plex-sans), sans-serif",
+              color: "#c8c0ad",
+              textDecoration: "none",
+            }}
+          >
+            Bandeja
+          </Link>
+        )}
+        {usuario.rol === "ADMINISTRATIVO" && (
+          <Link
             href="/usuarios"
             style={{
               font: "500 13px var(--font-plex-sans), sans-serif",

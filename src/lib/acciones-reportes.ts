@@ -80,10 +80,36 @@ export async function corregirReporte(
   });
   if (!reporte) return { ok: false, errores: ["Ese reporte no existe."] };
 
+  // ┌────────────────────────────────────────────────────────────────────────┐
+  // │ SOLO EL AUTOR CORRIGE SU REPORTE. NI SIQUIERA UN ADMINISTRATIVO.       │
+  // │                                                                        │
+  // │ Acá había un agujero: se usaba `puedeVer`, que le da acceso a un       │
+  // │ administrativo — correcto para LEER, porque la oficina tiene que ver   │
+  // │ el reporte en la bandeja, pero no para ESCRIBIR. Con esa comprobación, │
+  // │ la oficina podía editar la evidencia por POST directo.                 │
+  // │                                                                        │
+  // │ El reporte es evidencia: guarda lo que el comprador escribió, no una   │
+  // │ interpretación. Si la oficina pudiera corregirlo, la diferencia entre  │
+  // │ lo que dice el remito y lo que vio el comprador —que es justo lo que   │
+  // │ interesa conservar— se podría hacer desaparecer sin dejar rastro.      │
+  // │                                                                        │
+  // │ Lo único que la oficina le puede cambiar es el ESTADO, en              │
+  // │ `acciones-bandeja.ts`, y eso queda registrado con quién y cuándo.      │
+  // └────────────────────────────────────────────────────────────────────────┘
+  //
   // El permiso, antes que el estado: a alguien que no puede ver el reporte no
   // se le cuenta en qué estado está.
   if (!puedeVer(yo, reporte)) {
     return { ok: false, errores: ["Ese reporte es de otra persona."] };
+  }
+  if (reporte.creadoPorUsuarioId !== yo.id) {
+    return {
+      ok: false,
+      errores: [
+        "Este reporte lo mandó otra cuenta y es evidencia: solo quien lo cargó " +
+          "puede corregirlo, y solo mientras esté pendiente.",
+      ],
+    };
   }
 
   if (reporte.estado === "PROCESADO") return { ok: false, errores: [CONGELADO] };

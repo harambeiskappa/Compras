@@ -245,6 +245,8 @@ export async function reporteParaVer(id: number, usuario: UsuarioSesion) {
       recibidoEn: true,
       creadoPorUsuarioId: true,
       creadoPorUsuario: { select: { nombre: true } },
+      motivoDescarte: true,
+      estadoCambiadoEn: true,
       adjuntos: {
         orderBy: { id: "asc" },
         select: { id: true, url: true, numero: true, nota: true },

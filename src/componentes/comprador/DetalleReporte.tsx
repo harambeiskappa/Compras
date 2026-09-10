@@ -29,6 +29,9 @@ type Reporte = {
   recibidoEn: string;
   cargadoPor: string | null;
   compras: number;
+  /** Por qué la oficina lo descartó. La pantalla promete mostrarlo. */
+  motivoDescarte: "DUPLICADO" | "ERROR" | "NO_SE_HIZO" | null;
+  estadoCambiadoEn: string | null;
   adjuntos: Adjunto[];
 };
 
@@ -396,10 +399,20 @@ function Banda({ reporte }: { reporte: Reporte }) {
       </Caja>
     );
   }
+  // EL MOTIVO SE MUESTRA. La pantalla promete que el comprador va a ver que se
+  // descartó Y POR QUÉ: sin el porqué queda alguien preguntándose si hizo algo
+  // mal, que es peor que la noticia misma.
+  const porque: Record<NonNullable<Reporte["motivoDescarte"]>, string> = {
+    DUPLICADO: "ya había llegado el mismo reporte antes",
+    ERROR: "se mandó por equivocación",
+    NO_SE_HIZO: "la compra finalmente no se hizo",
+  };
   return (
     <Caja color="var(--aviso-hondo)" fondo="var(--aviso-claro)" borde="var(--aviso-borde)">
-      <strong>Descartado por la oficina.</strong> Ya no se edita. Queda guardado
-      como evidencia de lo que informaste.
+      <strong>Descartado por la oficina</strong>
+      {reporte.motivoDescarte ? `: ${porque[reporte.motivoDescarte]}.` : "."} Ya no
+      se edita. <strong>Queda guardado igual</strong>, como evidencia de lo que
+      informaste desde la feria — descartarlo no lo borra.
     </Caja>
   );
 }

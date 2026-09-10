@@ -66,6 +66,8 @@ export async function GET(
       recibidoEn: reporte.recibidoEn.toISOString(),
       cargadoPor: reporte.creadoPorUsuario?.nombre ?? null,
       compras: reporte._count.compras,
+      motivoDescarte: reporte.motivoDescarte,
+      estadoCambiadoEn: reporte.estadoCambiadoEn?.toISOString() ?? null,
       adjuntos,
     },
     { headers: { "Cache-Control": "no-store" } }

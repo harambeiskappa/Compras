@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { suscribir } from "@/lib/dispositivo/cola";
+import {
+  descartarDeCola,
+  devolverABorrador,
+  estaRechazado,
+  suscribir,
+} from "@/lib/dispositivo/cola";
 import { listarBorradores, listarCola } from "@/lib/dispositivo/db";
 import type { ReporteEnPantalla } from "@/lib/dispositivo/tipos";
 
@@ -43,7 +48,12 @@ export function ListaReportes() {
         origen: "dispositivo",
         clave: e.clave,
         id: null,
-        estado: "esperando",
+        // EL QUINTO ESTADO. Un 4xx no se reintenta, así que esta entrada no
+        // está «esperando señal»: está esperando que alguien haga algo. Decir
+        // que espera señal sería mentirle a quien después se va de la feria
+        // creyendo que va a salir solo.
+        estado: estaRechazado(e) ? "rechazado" : "esperando",
+        motivo: e.ultimoError,
         fecha: e.reporte.fecha,
         consignatario: e.reporte.consignatarioTexto,
         plaza: e.reporte.plazaTexto,
@@ -192,6 +202,15 @@ const SELLOS: Record<
     fondo: "#fdf6e7",
     borde: "#e6d4a8",
   },
+  // NO es rojo: el vocabulario de esta pantalla no usa rojo. Pero sí es el
+  // único estado que necesita que la persona haga algo, así que lleva el color
+  // de los avisos y no el ámbar tranquilo de «esperando señal».
+  rechazado: {
+    texto: "No lo pudo recibir la oficina",
+    color: "var(--aviso-hondo)",
+    fondo: "var(--aviso-claro)",
+    borde: "var(--aviso-borde)",
+  },
   PENDIENTE: {
     texto: "Enviado",
     color: "var(--verde)",
@@ -279,6 +298,14 @@ function Fila({ reporte }: { reporte: ReporteEnPantalla }) {
   // Un borrador o uno esperando señal no tienen id del servidor: no hay adónde
   // ir. El borrador se retoma desde «Cargar».
   if (reporte.origen === "dispositivo") {
+    if (reporte.estado === "rechazado") {
+      return (
+        <div>
+          {contenido}
+          <Rechazado clave={reporte.clave!} motivo={reporte.motivo ?? null} />
+        </div>
+      );
+    }
     return reporte.estado === "borrador" ? (
       <Link href="/reportar" style={{ textDecoration: "none", color: "inherit" }}>
         {contenido}
@@ -336,6 +363,99 @@ function Vacio() {
       >
         Cargar el primero
       </Link>
+    </div>
+  );
+}
+
+
+/**
+ * Las dos salidas del quinto estado.
+ *
+ * UN REPORTE NUNCA PUEDE QUEDAR INALCANZABLE. Hasta acá, un rechazo del
+ * servidor dejaba el reporte atrapado en la cola: no se podía ver, ni corregir,
+ * ni descartar — solo se destrababa borrando los datos del navegador. Y un
+ * reporte atrapado es evidencia perdida, que es justo lo que este módulo existe
+ * para no perder.
+ *
+ * El tono es el de los avisos y no el rojo: los otros cuatro estados nunca
+ * asustan, y romper ese vocabulario acá haría que el ámbar de «esperando señal»
+ * empiece a leerse como un problema. Pero éste sí necesita que alguien haga
+ * algo, y por eso las dos salidas están a la vista y no escondidas.
+ */
+function Rechazado({ clave, motivo }: { clave: string; motivo: string | null }) {
+  const [ocupado, setOcupado] = useState(false);
+
+  return (
+    <div
+      style={{
+        margin: "-4px 0 12px",
+        padding: "12px 14px",
+        background: "var(--aviso-claro)",
+        border: "1px solid var(--aviso-borde)",
+        borderLeft: "3px solid var(--aviso)",
+        borderRadius: 2,
+        font: "400 13px/1.55 var(--font-plex-sans), sans-serif",
+        color: "var(--tinta-media)",
+      }}
+    >
+      <div style={{ font: "500 14px var(--font-plex-sans), sans-serif" }}>
+        La oficina no lo pudo recibir.
+      </div>
+      {motivo && (
+        <p style={{ margin: "5px 0 0" }}>
+          Dijo: <strong>{motivo}</strong>
+        </p>
+      )}
+      <p style={{ margin: "6px 0 0" }}>
+        {/* La garantía primero: lo que asusta no es el rechazo, es pensar que
+            se perdió el trabajo de la feria. */}
+        <strong>No se perdió nada</strong>: sigue guardado en el teléfono con sus
+        fotos. Reintentar solo no lo va a arreglar, así que hace falta corregirlo
+        o decidir descartarlo.
+      </p>
+      <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          disabled={ocupado}
+          onClick={() => {
+            setOcupado(true);
+            void devolverABorrador(clave).then(() => {
+              window.location.href = "/reportar";
+            });
+          }}
+          style={{
+            padding: "9px 15px",
+            font: "500 14px var(--font-plex-sans), sans-serif",
+            color: "var(--papel)",
+            background: "var(--verde)",
+            border: "1px solid var(--verde-hondo)",
+            borderRadius: 2,
+            cursor: ocupado ? "progress" : "pointer",
+          }}
+        >
+          Corregirlo y volver a mandarlo
+        </button>
+        <button
+          type="button"
+          disabled={ocupado}
+          onClick={() => {
+            if (!confirm("¿Descartarlo? Se borra del teléfono y no se puede deshacer.")) return;
+            setOcupado(true);
+            void descartarDeCola(clave);
+          }}
+          style={{
+            padding: "9px 15px",
+            font: "400 14px var(--font-plex-sans), sans-serif",
+            color: "var(--aviso-hondo)",
+            background: "transparent",
+            border: "1px solid var(--aviso-borde)",
+            borderRadius: 2,
+            cursor: "pointer",
+          }}
+        >
+          Descartarlo
+        </button>
+      </div>
     </div>
   );
 }

@@ -69,6 +69,7 @@ const VERIFICACIONES: Verificacion[] = [
   { nombre: "módulo 1", script: "verificar-modulo-1.ts", necesitaServidor: true },
   { nombre: "auth", script: "verificar-auth.ts", necesitaServidor: true },
   { nombre: "usuarios", script: "verificar-usuarios.ts", necesitaServidor: true },
+  { nombre: "bandeja", script: "verificar-bandeja.ts", necesitaServidor: true },
   { nombre: "comprador (HTTP)", script: "verificar-comprador.ts", necesitaServidor: true },
   {
     nombre: "comprador (navegador)",

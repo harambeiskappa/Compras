@@ -1,4 +1,11 @@
-import { borrarBorrador, hayIndexedDB, listarCola, ponerEnCola, sacarDeCola } from "./db";
+import {
+  borrarBorrador,
+  guardarBorrador,
+  hayIndexedDB,
+  listarCola,
+  ponerEnCola,
+  sacarDeCola,
+} from "./db";
 import type { BorradorReporte, EnCola } from "./tipos";
 
 /**
@@ -26,7 +33,10 @@ import type { BorradorReporte, EnCola } from "./tipos";
 const ESPERAS_MS = [2_000, 5_000, 15_000, 60_000, 300_000];
 
 export type EstadoCola = {
+  /** En cola y con reintento pendiente. Es el estado normal en la feria. */
   esperando: number;
+  /** Rechazados por el servidor: NO se reintentan y necesitan que alguien haga algo. */
+  rechazados: number;
   enviando: boolean;
   ultimoError: string | null;
   /** Lo que el navegador cree; se confirma recién cuando un envío sale bien. */
@@ -49,8 +59,12 @@ export function suscribir(fn: Escucha): () => void {
 async function avisar(): Promise<void> {
   if (!escuchas.size) return;
   const pendientes = hayIndexedDB() ? await listarCola().catch(() => []) : [];
+  const rechazados = pendientes.filter(estaRechazado);
   const estado: EstadoCola = {
-    esperando: pendientes.length,
+    // Los rechazados NO cuentan como «esperando señal»: no están esperando
+    // nada, y contarlos ahí diría que se van a mandar solos cuando no.
+    esperando: pendientes.length - rechazados.length,
+    rechazados: rechazados.length,
     enviando,
     ultimoError,
     hayRed: typeof navigator === "undefined" ? true : navigator.onLine,
@@ -77,6 +91,46 @@ export async function encolar(borrador: BorradorReporte): Promise<void> {
   await borrarBorrador(borrador.clave);
   await avisar();
   void vaciar();
+}
+
+/**
+ * Marca de «el servidor lo rechazó y no se va a reintentar».
+ *
+ * Un 4xx no se reintenta —reintentar no lo va a arreglar— así que la entrada
+ * queda con el próximo intento en el infinito. Este número ES la marca, y por
+ * eso vive acá con nombre en vez de repetido como literal.
+ */
+const NUNCA = Number.MAX_SAFE_INTEGER;
+
+/**
+ * UN REPORTE NUNCA PUEDE QUEDAR INALCANZABLE.
+ *
+ * Es la regla del botón que queda muerto, subida un nivel: lo que queda
+ * inutilizable no es un botón, es un registro entero. Y un reporte atrapado es
+ * evidencia perdida, que es exactamente lo que este módulo existe para no
+ * perder. Por eso hay las dos salidas: volver a borrador para corregirlo y
+ * mandarlo de nuevo, o descartarlo deliberadamente.
+ */
+export function estaRechazado(e: EnCola): boolean {
+  return e.proximoIntento === NUNCA && e.ultimoError !== null;
+}
+
+/** Lo devuelve a borrador para corregirlo. La clave de idempotencia SE CONSERVA. */
+export async function devolverABorrador(clave: string): Promise<void> {
+  const entrada = (await listarCola()).find((e) => e.clave === clave);
+  if (!entrada) return;
+  // Se conserva la clave a propósito: si el reporte llegó a entrar del otro
+  // lado antes de fallar por otra cosa, reenviarlo con la misma clave devuelve
+  // el existente en vez de crear un duplicado.
+  await guardarBorrador({ ...entrada.reporte, actualizadoEn: new Date().toISOString() });
+  await sacarDeCola(clave);
+  await avisar();
+}
+
+/** Lo saca de la cola sin mandarlo. Es una decisión, no un accidente. */
+export async function descartarDeCola(clave: string): Promise<void> {
+  await sacarDeCola(clave);
+  await avisar();
 }
 
 function armarCuerpo(entrada: EnCola): FormData {
@@ -154,7 +208,7 @@ export async function vaciar(): Promise<void> {
           await ponerEnCola({
             ...entrada,
             intentos: entrada.intentos + 1,
-            proximoIntento: Number.MAX_SAFE_INTEGER,
+            proximoIntento: NUNCA,
             ultimoError:
               (cuerpo as { error?: string }).error ||
               `El servidor lo rechazó (HTTP ${res.status}).`,

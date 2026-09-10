@@ -10,14 +10,14 @@ El código lo escribe Claude Code en VS Code; acá va el análisis y el registro
 
 ## Dónde retomamos — actualizado 2026-09-09 (auth cerrada)
 
-**Próximo paso concreto:** construir **la pantalla del comprador y la máquina del offline** — `docs/prompt-pantalla-comprador.md`, listo para pasarle a Claude Code.
+**Próximo paso concreto:** el **documento de diseño de la bandeja de la oficina** —la otra mitad del módulo 2, donde un reporte se convierte en una compra— más un addendum corto para Claude Design: **el quinto estado**, el del reporte que el servidor rechazó y hoy queda inalcanzable.
 
 | | |
 |---|---|
 | **Fase** | 1 — Módulos 1 (Información de la compra) y 2 (Compra) |
-| **Situación** | Módulo 1 cerrado en producción. Módulo 2: esquema, auth, cuentas y diseño listos; **falta construir la pantalla**. |
+| **Situación** | Módulo 1 cerrado. **La pantalla del comprador y el offline, construidos y verificados.** Falta la bandeja de la oficina. |
 | **Stack** | Next.js 16 + TypeScript + Tailwind + Prisma 7.10.0 + Postgres de Supabase, deploy en Vercel |
-| **Repo** | `github.com/harambeiskappa/Compras` → `inaki-pegsa/compras` → https://compras-ten-mu.vercel.app · `main` en `713768a` |
+| **Repo** | `github.com/harambeiskappa/Compras` → `inaki-pegsa/compras` → https://compras-ten-mu.vercel.app · `main` en `f445eff` |
 | **Base** | Supabase `compras-db`, São Paulo, plan free. Una sola cuenta: `admin`. |
 | **Base de referencia** | `C:\Users\zemma\Claude\Projects\WinCompras\backend\db.sqlite3` (solo lectura) |
 
@@ -903,3 +903,80 @@ Es el segundo diagnóstico confiado y equivocado de la jornada —el primero fue
 **`scripts/verificar-modulo-1.ts` está roto desde el commit de auth**, hace once días, y nadie lo notó. Llama a las server actions en proceso y `exigir()` necesita `cookies()`, que fuera de una request no existe. O sea que **los «19 chequeos en verde» del módulo 1 no se pueden reproducir hoy**: dejaron de ser un hecho verificable y pasaron a ser una anécdota.
 
 Tres reglas nuevas en `CLAUDE.md`: las verificaciones se corren **todas juntas con un solo comando**, para que un script roto sea tan visible como un chequeo en rojo; **entran por el login y llaman por HTTP**, nunca a las server actions en proceso, porque llamar la función directo saltea justo las capas que se quieren probar; y **lo que hay que preparar en Supabase se prepara desde un script del repo, no con un clic en el panel** — vale para las tablas y ahora también para Storage, con `preparar-storage.ts` y el bucket `remitos` privado, tope de 5 MB, solo imágenes.
+
+---
+
+### 2026-09-09 · `npm run verificar`: 65 en verde, y una bomba desactivada
+
+**Las seis verificaciones bajo un solo comando**, en serie porque comparten base —la de usuarios cuenta administrativos activos y otra en paralelo le cambiaría el resultado—:
+
+| | |
+|---|---:|
+| módulo 1 | 20 |
+| auth | 8 |
+| usuarios | 14 |
+| comprador (HTTP) | 12 |
+| comprador (navegador) | 10 |
+| prueba histórica | 1 |
+| **total** | **65 en verde, 0 en rojo** |
+
+El módulo 1 pasó de 19 a **20**: el chequeo nuevo es que la acción rebote **sin cookie**, que es exactamente donde el script se había roto. Y la histórica conserva su criterio propio — el runner lee su veredicto y su código de salida, no cuenta chequeos por su cuenta.
+
+**Una bomba desactivada de paso.** `verificar-modulo-1.ts` tenía un `--limpiar` que hacía `deleteMany({})` sobre **todas** las compras. Mientras la base estuvo vacía fue inofensivo; con compras reales era una bomba a un flag de distancia, apuntando a la única base que existe. Ahora borra solo lo suyo, por id, y quedó como regla en `CLAUDE.md`. **Un peligro que envejece mal: no cambió el código, cambió lo que había del otro lado.** Es el mismo patrón que el `?? "/compras"` del login.
+
+**El primer intento de probar la guarda no probó nada, y lo encontró él.** Metió `import { estoNoExiste } from "./modulo-que-no-existe"` y el comando siguió dando 65 en verde: **`tsx` elide un import cuyo binding nadie usa**, así que el script corría igual. Con `import "./modulo-que-no-existe"` —de efecto, no elidible— sí revienta, y el resumen marca `NO ARRANCÓ` como rojo, 57 en verde, 1 en rojo, código 1.
+
+Es la cuarta vez que este proyecto se topa con la misma forma, y esta vez **en la prueba de la guarda que existe para detectar esa forma**. Por eso lo que más va a durar no es la guarda: es que **quedó escrito en el encabezado de `verificar-todo.ts` cómo romperla bien y por qué la forma obvia no sirve.** Sin esa nota, el próximo que quiera reprobarla hace lo mismo y se queda tranquilo.
+
+**Y la pregunta del índice de las fotos era el primer caso:** cada envío sube todas, `corregirReporte` no toca fotos, y `encolar` congela el juego y borra el borrador, así que entre dos intentos los índices no se pueden mover. No había nada que arreglar — **pero agregó el caso igual** (tres fotos de tamaños distintos, borrar la del medio, reenviar, comprobar contra Storage que cada fila apunta a su imagen), y eso es lo correcto: **una propiedad que hoy se cumple por una razón que nadie escribió deja de cumplirse el día que esa razón cambia.**
+
+## Un cabo suelto que sí hay que cerrar
+
+**Un reporte que el servidor rechaza con 4xx queda en un callejón sin salida:** no reintenta —correcto, reintentar no lo va a arreglar— pero **no hay forma de verlo, corregirlo ni descartarlo desde la pantalla**. Hoy solo se destraba borrando los datos del navegador.
+
+Es grave por lo que es, no por lo que rompe: **un reporte atrapado es evidencia perdida**, que es exactamente lo que este módulo existe para no perder. Y es la misma regla del botón muerto, subida un nivel: ahora lo que queda inutilizable sin decir por qué no es un botón, es un registro entero.
+
+**Decisión de dominio:** un reporte nunca puede quedar inalcanzable. La persona tiene que poder verlo, corregirlo y reintentar, o descartarlo **deliberadamente**. **La forma de ese quinto estado va a Claude Design**, junto con la bandeja: el vocabulario de estados de esa pantalla es suyo —ámbar y nunca rojo, siempre con la razón al lado— y agregarle uno por afuera lo rompería.
+
+---
+
+### 2026-09-09 · El documento de la bandeja, y un hallazgo que cambia el formulario
+
+`docs/diseno-bandeja-modulo-2.md`. Tercer documento del mismo circuito, con §4 addendum del quinto estado para que salga todo en un solo envío a Claude Design.
+
+**El hallazgo, medido sobre los 345 renglones del último año:**
+
+| | cobertura |
+|---|---:|
+| cabezas | **100 %** |
+| comisión | 97 % |
+| precio por kilo | 91 % |
+| kilos **por cabeza** | 91 % |
+| establecimiento | **10 %** |
+| **peso de origen (total)** | **0 %** |
+
+**El peso total de origen está en 0 %, pero los kilos por cabeza están en 91 %.** O sea que **no es que no sepan los kilos: es que la casa los escribe por cabeza y no en total.** Nuestro esquema guarda `kilosOrigen` como total, y está bien —el total es el hecho, el promedio se calcula—, pero **si el formulario pide el total está pidiendo un número que nadie tiene en la mano.** Es exactamente el tipo de cosa que hace que un campo quede en 0 % de cobertura durante seis años, y no se veía en la medición anterior porque estaba hecha a nivel compra y no a nivel renglón.
+
+**Cómo escriben las categorías:** mezclan código y palabra, y la palabra gana — **`vaca` sola es el 21 % de los renglones**, contra 7 % de `VA`. El diccionario de 217 sinónimos no es una comodidad: es el mecanismo principal de entrada.
+
+**Y el establecimiento está en 10 %**, que es medio proyecto: la comisión lo sigue —feedlot 2 %, campo 3 %— y sin él no se reconstruye nada.
+
+**Una nota de forma que vale para los tres documentos:** el dato que más cambió el diseño no fue el que buscaba, sino el que apareció al medir a otro nivel de grano. Los 117 y el 50 % de Darwash ya los sabía; los kilos por cabeza no.
+
+---
+
+### 2026-09-10 · La bandeja vuelve del diseño: nada viola §1, y el prototipo se atrapó a sí mismo
+
+**Los siete cambios de §2 quedan y las diez preguntas de §3 están resueltas.** Registro en `docs/cambios-diseno-bandeja.md`; el prompt de implementación en `docs/prompt-bandeja.md`.
+
+**Lo más importante del entregable es un bug que encontró y arregló solo: un campo vacío contaba como 0.** El panel decía «sobre 3 de 3» cuando solo dos renglones tenían kilos, y el promedio daba 268 en vez de 339. **Es el error fundacional del proyecto —las 19 columnas `REAL NOT NULL` con 0 donde no hay dato— reproducido adentro de la pantalla que promete no cometerlo, y en el mismo panel que muestra la cobertura.** La regla más fácil de romper es la que uno cree que ya internalizó.
+
+**Respondió §3.3 con la medición, no con el gusto:** el campo es **KILOS POR CABEZA** y el total se muestra derivado. Es lo que decían los números —por cabeza 91 %, total 0 %— y es la diferencia entre un campo que se llena y uno que se queda vacío seis años.
+
+**Verifiqué el 93 % que afirmó, y da 94 %:** de las 74 compras multi-renglón del último año, 71 permiten calcular el porcentaje y **67 tienen el mismo en todos los renglones**. Y de paso salió que el establecimiento mixto es más fuerte de lo que yo había escrito: **5 de las 7 compras multi-renglón con establecimiento cargado lo tienen mixto**.
+
+**Lo que hay que agregar: el motivo del descarte no tiene dónde vivir.** El diálogo promete que el comprador va a ver **por qué** se descartó, y `ReporteCompra` no tiene ese campo — `observaciones` es del comprador y es evidencia, así que la oficina no escribe ahí. Va migración: `motivoDescarte` más `estadoCambiadoPorUsuarioId` y `estadoCambiadoEn`, **que cubren también el marcado como procesado y su reversión**: son decisiones que le sacan algo a otra persona y `actualizadoEn` no alcanza porque se mueve con cualquier cambio.
+
+**Y la pregunta de la atribución tiene respuesta, no es un agujero.** «Lo mandó Ramiro» sale de la cuenta y miente si dos la comparten — pero son dos campos distintos y los dos existen: `creadoPorUsuarioId` dice qué cuenta, y eso siempre es cierto; `personaCompradoraId` dice quién fue físicamente. **La pantalla tiene que rotular la cuenta como cuenta**, no afirmar la persona.
+
+**Una anotación de higiene:** tres citas de §1 vinieron cambiadas de número. Las decisiones son correctas, las citas no, y quedó dicho en el prompt que se siga la regla y no el número. Ya nos pasó con las teclas de camiones que una decisión buena viniera con la razón equivocada, y la razón es lo que sobrevive a la decisión.

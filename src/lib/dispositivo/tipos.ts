@@ -15,7 +15,7 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
-export type EstadoLocal = "borrador" | "esperando";
+export type EstadoLocal = "borrador" | "esperando" | "rechazado";
 
 export type RemitoLocal = {
   /** Id local de la foto. Solo sirve para ordenarlas y borrarlas en pantalla. */
@@ -73,7 +73,16 @@ export type ReporteEnPantalla = {
   origen: "dispositivo" | "servidor";
   clave: string | null;
   id: number | null;
-  estado: "borrador" | "esperando" | "PENDIENTE" | "PROCESADO" | "DESCARTADO";
+  estado:
+    | "borrador"
+    | "esperando"
+    /** El quinto: el servidor lo rechazó y NO se va a reintentar solo. */
+    | "rechazado"
+    | "PENDIENTE"
+    | "PROCESADO"
+    | "DESCARTADO";
+  /** Por qué lo rechazó el servidor, o por qué la oficina lo descartó. */
+  motivo?: string | null;
   fecha: string | null;
   consignatario: string | null;
   plaza: string | null;

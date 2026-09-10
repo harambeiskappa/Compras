@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { urlFirmada } from "@/lib/almacenamiento";
+import { sinonimosConocidos } from "@/lib/categorias";
 import { prisma } from "@/lib/prisma";
 import { DetalleCompra } from "@/componentes/DetalleCompra";
+import { PanelReporte } from "@/componentes/compra/PanelReporte";
+import { Renglones } from "@/componentes/compra/Renglones";
+import { TropasYCargas } from "@/componentes/compra/TropasYCargas";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +31,69 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
       hotelero: { select: { id: true, nombre: true } },
       personaCompradora: { select: { id: true, nombre: true } },
       creadoPorUsuario: { select: { nombre: true } },
+      empresaTitularId: true,
+      tropas: {
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          nroTropa: true,
+          fecha: true,
+          empresaCompradoraId: true,
+          empresaCompradora: { select: { nombre: true } },
+          _count: { select: { lotes: true, cargas: true } },
+        },
+      },
+      cargas: {
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          tropaId: true,
+          dte: true,
+          transportista: true,
+          patente: true,
+          fechaSalida: true,
+          cabezas: true,
+        },
+      },
+      lotes: {
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          cabezas: true,
+          kilosOrigen: true,
+          precio: true,
+          modalidadPrecio: true,
+          comision: true,
+          comisionModalidad: true,
+          establecimientoId: true,
+          tropaId: true,
+          categoriaSinonimo: {
+            select: {
+              texto: true,
+              categoriaCanonica: { select: { codigo: true, descripcion: true } },
+            },
+          },
+        },
+      },
+      reporte: {
+        select: {
+          id: true,
+          fecha: true,
+          consignatarioTexto: true,
+          plazaTexto: true,
+          cabezasAproximadas: true,
+          cantidadCamiones: true,
+          observaciones: true,
+          cargadoEn: true,
+          recibidoEn: true,
+          creadoPorUsuario: { select: { usuario: true } },
+          personaCompradora: { select: { nombre: true } },
+          adjuntos: {
+            orderBy: { id: "asc" },
+            select: { id: true, url: true, numero: true, nota: true },
+          },
+        },
+      },
     },
   });
 
@@ -47,6 +115,90 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
     // tiene autor, y eso es «s/d». Poner «oficina» fijo sería inventar el dato.
     creadoPor: c.creadoPorUsuario?.nombre ?? null,
   };
+
+  const establecimientos = await prisma.establecimiento.findMany({
+    where: { activo: true },
+    // Por USO y no alfabético: El Haras concentra la mayor parte del stock y un
+    // orden por nombre lo entierra, igual que a Darwash en los consignatarios.
+    // Es la tercera vez que aparece esta misma regla en el proyecto.
+    select: { id: true, nombre: true, _count: { select: { lotes: true } } },
+  });
+  establecimientos.sort(
+    (a, b) => b._count.lotes - a._count.lotes || a.nombre.localeCompare(b.nombre, "es")
+  );
+
+  const empresas = await prisma.entidad.findMany({
+    where: { esPropio: true },
+    orderBy: { nombre: "asc" },
+    select: { id: true, nombre: true },
+  });
+
+  const sinonimos = await sinonimosConocidos();
+
+  const renglones = c.lotes.map((l) => ({
+    id: l.id,
+    categoriaTexto: l.categoriaSinonimo.texto,
+    categoriaCodigo: l.categoriaSinonimo.categoriaCanonica?.codigo ?? null,
+    categoriaDescripcion: l.categoriaSinonimo.categoriaCanonica?.descripcion ?? null,
+    cabezas: l.cabezas,
+    // Decimal → number para poder mandarlo al cliente. Los montos de esta app
+    // están muy lejos del límite de precisión de un double.
+    kilosOrigen: l.kilosOrigen === null ? null : Number(l.kilosOrigen),
+    precio: l.precio === null ? null : Number(l.precio),
+    modalidadPrecio: l.modalidadPrecio,
+    comision: l.comision === null ? null : Number(l.comision),
+    comisionModalidad: l.comisionModalidad,
+    establecimientoId: l.establecimientoId,
+    tropaId: l.tropaId,
+  }));
+
+  const tropas = c.tropas.map((t) => ({
+    id: t.id,
+    empresa: t.empresaCompradora.nombre,
+    empresaId: t.empresaCompradoraId,
+    nroTropa: t.nroTropa,
+    fecha: t.fecha ? t.fecha.toISOString().slice(0, 10) : null,
+    lotes: t._count.lotes,
+    cargas: t._count.cargas,
+  }));
+
+  /*
+   * EL AVISO DE EMPRESA TITULAR: SEÑALA, NUNCA BLOQUEA.
+   *
+   * La titular puede cambiar legítimamente entre la compra y la liquidación —
+   * se define comprar para BUL y se termina liquidando a PEGSA, que están muy
+   * vinculadas. Medido: 9 de 120 compras del último año lo hacen. Bloquearlo
+   * impediría un caso real, así que la app lo dice y una persona decide.
+   *
+   * Solo tiene sentido cuando hay tropas contra las cuales comparar: sin
+   * tropas no hay nada que avisar, y un cartel permanente se vuelve invisible.
+   */
+  const titularFuera =
+    tropas.length > 0 && !tropas.some((t) => t.empresaId === c.empresaTitularId);
+
+  const reporte = c.reporte
+    ? {
+        id: c.reporte.id,
+        fecha: c.reporte.fecha ? c.reporte.fecha.toISOString().slice(0, 10) : null,
+        consignatario: c.reporte.consignatarioTexto,
+        plaza: c.reporte.plazaTexto,
+        cabezas: c.reporte.cabezasAproximadas,
+        camiones: c.reporte.cantidadCamiones,
+        observaciones: c.reporte.observaciones,
+        cargadoEn: c.reporte.cargadoEn.toISOString(),
+        recibidoEn: c.reporte.recibidoEn.toISOString(),
+        cuenta: c.reporte.creadoPorUsuario?.usuario ?? null,
+        personaCompradora: c.reporte.personaCompradora?.nombre ?? null,
+        adjuntos: await Promise.all(
+          c.reporte.adjuntos.map(async (a) => ({
+            id: a.id,
+            numero: a.numero,
+            nota: a.nota,
+            url: await urlFirmada(a.url),
+          }))
+        ),
+      }
+    : null;
 
   /*
    * EL ID ES UN IDENTIFICADOR, NO UN CONTADOR.
@@ -136,14 +288,123 @@ export default async function PaginaDetalle({ params }: PageProps<"/compras/[id]
       </div>
 
       {/*
-        Acá iría el aviso de empresa titular fuera de sus tropas. No se muestra
-        ninguno porque no puede haberlos: el aviso compara contra las tropas de
-        la compra, y las tropas son del módulo 2. La plomería está en el server
-        (guardarRol valida la titular); el cartel llega cuando haya con qué
-        compararlo.
+        EL AVISO DE EMPRESA TITULAR: SEÑALA, NUNCA BLOQUEA. Ahora sí hay contra
+        qué compararlo — las tropas existen desde el módulo 2 — así que el
+        cartel que el módulo 1 dejó pendiente aparece acá.
       */}
+      {titularFuera && (
+        <div
+          role="status"
+          style={{
+            marginTop: 18,
+            padding: "12px 14px",
+            background: "var(--aviso-claro)",
+            border: "1px solid var(--aviso-borde)",
+            borderLeft: "4px solid var(--aviso)",
+            borderRadius: 2,
+            font: "400 14px/1.55 var(--font-plex-sans), sans-serif",
+          }}
+        >
+          <strong>{compra.empresaTitular.nombre}</strong> es la empresa titular,
+          pero no figura entre las de las tropas
+          {" ("}
+          {[...new Set(tropas.map((t) => t.empresa))].join(", ")}
+          {"). "}
+          Puede ser correcto: la titular cambia legítimamente entre la compra y
+          la liquidación, y pasa en 9 de cada 120 compras. Se guarda igual — esto
+          es un aviso, no un bloqueo.
+        </div>
+      )}
 
-      <DetalleCompra compra={compra} />
+      {reporte ? (
+        <div
+          style={{
+            marginTop: 24,
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) 320px",
+            gap: 26,
+            alignItems: "start",
+          }}
+        >
+          <div>
+            <DetalleCompra compra={compra} />
+            <TropasYCargas
+              compraId={compra.id}
+              tropas={tropas}
+              cargas={c.cargas.map((x) => ({
+                id: x.id,
+                tropaId: x.tropaId,
+                dte: x.dte,
+                transportista: x.transportista,
+                patente: x.patente,
+                fechaSalida: x.fechaSalida ? x.fechaSalida.toISOString().slice(0, 10) : null,
+                cabezas: x.cabezas,
+              }))}
+              empresas={empresas}
+            />
+            <Renglones
+              compraId={compra.id}
+              renglones={renglones}
+              establecimientos={establecimientos.map((e) => ({ id: e.id, nombre: e.nombre }))}
+              tropas={tropas.map((t) => ({
+                id: t.id,
+                etiqueta: `${t.empresa}${t.nroTropa ? ` · ${t.nroTropa}` : ""}`,
+              }))}
+              sinonimos={sinonimos}
+              cabezasDelReporte={reporte.cabezas}
+            />
+          </div>
+          <PanelReporte reporte={reporte} />
+        </div>
+      ) : (
+        <>
+          <DetalleCompra compra={compra} />
+          <TropasYCargas
+            compraId={compra.id}
+            tropas={tropas}
+            cargas={c.cargas.map((x) => ({
+              id: x.id,
+              tropaId: x.tropaId,
+              dte: x.dte,
+              transportista: x.transportista,
+              patente: x.patente,
+              fechaSalida: x.fechaSalida ? x.fechaSalida.toISOString().slice(0, 10) : null,
+              cabezas: x.cabezas,
+            }))}
+            empresas={empresas}
+          />
+          <Renglones
+            compraId={compra.id}
+            renglones={renglones}
+            establecimientos={establecimientos.map((e) => ({ id: e.id, nombre: e.nombre }))}
+            tropas={tropas.map((t) => ({
+              id: t.id,
+              etiqueta: `${t.empresa}${t.nroTropa ? ` · ${t.nroTropa}` : ""}`,
+            }))}
+            sinonimos={sinonimos}
+            cabezasDelReporte={null}
+          />
+          {/*
+            SIN REPORTE ES EL CASO MAYORITARIO, no algo roto: en más de la mitad
+            de las compras los remitos llegan a la oficina directamente. Se dice
+            para que la ausencia del panel no se lea como una falla.
+          */}
+          <p
+            style={{
+              marginTop: 36,
+              paddingTop: 18,
+              borderTop: "1px solid var(--borde)",
+              font: "400 14px/1.6 var(--font-plex-sans), sans-serif",
+              color: "var(--tinta-suave)",
+              maxWidth: "44em",
+            }}
+          >
+            Esta compra no salió de un reporte, y es lo más frecuente: en más de
+            la mitad de los casos —la feria de Darwash es la mitad de todo— los
+            remitos llegan acá directamente y nadie carga nada desde el celular.
+          </p>
+        </>
+      )}
     </main>
   );
 }
